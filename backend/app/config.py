@@ -5,12 +5,17 @@ Loads settings from environment variables.
 
 import os
 from typing import Optional
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from pathlib import Path
 
 
 class Settings(BaseSettings):
     """Application settings loaded from .env file."""
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8"
+    )
 
     # API Keys (optional for testing)
     anthropic_api_key: Optional[str] = None
@@ -25,10 +30,6 @@ class Settings(BaseSettings):
 
     # Retrieval settings
     retrieval_top_k: int = 10  # Number of chunks to retrieve
-
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
 
 
 def _get_env_file_path() -> Optional[str]:

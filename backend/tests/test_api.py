@@ -3,7 +3,7 @@ Integration tests for the FastAPI endpoints.
 """
 
 import pytest
-from fastapi.testclient import TestClient
+import httpx
 from pathlib import Path
 import tempfile
 import shutil
@@ -14,9 +14,11 @@ from app.services.embeddings import get_embedding_service
 
 
 @pytest.fixture
-def client():
-    """Create a test client."""
-    return TestClient(app)
+async def client():
+    """Create an async test client using the modern transport style."""
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        yield client
 
 
 @pytest.fixture
@@ -58,9 +60,10 @@ def setup_test_vector_store():
 class TestRootEndpoint:
     """Test the root endpoint."""
 
-    def test_root_returns_ok(self, client):
+    @pytest.mark.asyncio
+    async def test_root_returns_ok(self, client):
         """Test that the root endpoint returns ok status."""
-        response = client.get("/")
+        response = await client.get("/")
 
         assert response.status_code == 200
         data = response.json()
@@ -72,9 +75,10 @@ class TestRootEndpoint:
 class TestHealthEndpoint:
     """Test the health check endpoint."""
 
-    def test_health_check_basic(self, client):
+    @pytest.mark.asyncio
+    async def test_health_check_basic(self, client):
         """Test basic health check response."""
-        response = client.get("/health")
+        response = await client.get("/health")
 
         assert response.status_code == 200
         data = response.json()
@@ -82,9 +86,10 @@ class TestHealthEndpoint:
         assert data["version"] == "0.1.0"
         assert "components" in data
 
-    def test_health_check_shows_vector_store_status(self, client, setup_test_vector_store):
+    @pytest.mark.asyncio
+    async def test_health_check_shows_vector_store_status(self, client, setup_test_vector_store):
         """Test that health check shows vector store status."""
-        response = client.get("/health")
+        response = await client.get("/health")
 
         assert response.status_code == 200
         data = response.json()
@@ -95,13 +100,15 @@ class TestHealthEndpoint:
 class TestSearchEndpoint:
     """Test the search endpoint."""
 
-    def test_search_requires_query(self, client):
+    @pytest.mark.asyncio
+    async def test_search_requires_query(self, client):
         """Test that search requires a query parameter."""
-        response = client.get("/search")
+        response = await client.get("/search")
 
         assert response.status_code == 422  # Validation error
 
-    def test_search_with_no_documents(self, client):
+    @pytest.mark.asyncio
+    async def test_search_with_no_documents(self, client):
         """Test search when vector store is empty."""
         # Reset vector store
         import app.database.vector_store as vs_module
@@ -111,7 +118,7 @@ class TestSearchEndpoint:
         temp_dir = tempfile.mkdtemp()
         initialize_db(temp_dir, "empty_collection")
 
-        response = client.get("/search?q=test")
+        response = await client.get("/search?q=test")
 
         # Should return 404 when no documents
         assert response.status_code == 404
@@ -119,9 +126,10 @@ class TestSearchEndpoint:
         # Cleanup
         shutil.rmtree(temp_dir, ignore_errors=True)
 
-    def test_search_with_valid_query(self, client, setup_test_vector_store):
+    @pytest.mark.asyncio
+    async def test_search_with_valid_query(self, client, setup_test_vector_store):
         """Test search with a valid query."""
-        response = client.get("/search?q=meditation")
+        response = await client.get("/search?q=meditation")
 
         assert response.status_code == 200
         data = response.json()
@@ -132,9 +140,10 @@ class TestSearchEndpoint:
         assert "results" in data
         assert isinstance(data["results"], list)
 
-    def test_search_returns_relevant_results(self, client, setup_test_vector_store):
+    @pytest.mark.asyncio
+    async def test_search_returns_relevant_results(self, client, setup_test_vector_store):
         """Test that search returns relevant results."""
-        response = client.get("/search?q=meditation+and+mindfulness")
+        response = await client.get("/search?q=meditation+and+mindfulness")
 
         assert response.status_code == 200
         data = response.json()
@@ -149,9 +158,10 @@ class TestSearchEndpoint:
             assert "metadata" in first_result
             assert "relevance_score" in first_result
 
-    def test_search_limit_parameter(self, client, setup_test_vector_store):
+    @pytest.mark.asyncio
+    async def test_search_limit_parameter(self, client, setup_test_vector_store):
         """Test that the limit parameter works."""
-        response = client.get("/search?q=test&limit=2")
+        response = await client.get("/search?q=test&limit=2")
 
         assert response.status_code == 200
         data = response.json()
@@ -159,19 +169,21 @@ class TestSearchEndpoint:
         # Should return at most 2 results
         assert data["num_results"] <= 2
 
-    def test_search_limit_validation(self, client):
+    @pytest.mark.asyncio
+    async def test_search_limit_validation(self, client):
         """Test that limit parameter is validated."""
         # Limit too high
-        response = client.get("/search?q=test&limit=100")
+        response = await client.get("/search?q=test&limit=100")
         assert response.status_code == 422
 
         # Limit too low
-        response = client.get("/search?q=test&limit=0")
+        response = await client.get("/search?q=test&limit=0")
         assert response.status_code == 422
 
-    def test_search_result_structure(self, client, setup_test_vector_store):
+    @pytest.mark.asyncio
+    async def test_search_result_structure(self, client, setup_test_vector_store):
         """Test that search results have the correct structure."""
-        response = client.get("/search?q=programming")
+        response = await client.get("/search?q=programming")
 
         assert response.status_code == 200
         data = response.json()
@@ -190,16 +202,18 @@ class TestSearchEndpoint:
             metadata = result["metadata"]
             assert isinstance(metadata, dict)
 
-    def test_search_with_special_characters(self, client, setup_test_vector_store):
+    @pytest.mark.asyncio
+    async def test_search_with_special_characters(self, client, setup_test_vector_store):
         """Test search with special characters in query."""
-        response = client.get("/search?q=test%20%26%20query")
+        response = await client.get("/search?q=test%20%26%20query")
 
         # Should handle special characters gracefully
         assert response.status_code == 200
 
-    def test_search_relevance_scoring(self, client, setup_test_vector_store):
+    @pytest.mark.asyncio
+    async def test_search_relevance_scoring(self, client, setup_test_vector_store):
         """Test that relevance scores are calculated."""
-        response = client.get("/search?q=meditation")
+        response = await client.get("/search?q=meditation")
 
         assert response.status_code == 200
         data = response.json()
@@ -216,10 +230,11 @@ class TestSearchEndpoint:
 class TestCORS:
     """Test CORS configuration."""
 
-    def test_cors_headers_present(self, client):
+    @pytest.mark.asyncio
+    async def test_cors_headers_present(self, client):
         """Test that CORS headers are configured."""
         # Make an OPTIONS request (preflight)
-        response = client.options(
+        response = await client.options(
             "/",
             headers={
                 "Origin": "http://localhost:5173",
