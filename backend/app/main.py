@@ -12,6 +12,7 @@ import logging
 from app.config import settings
 from app.services.embeddings import get_embedding_service
 from app.database.vector_store import initialize_db, get_vector_store
+from app.routers.chat import router as chat_router
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -32,6 +33,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Include routers
+app.include_router(chat_router)
 
 
 @app.get("/")
