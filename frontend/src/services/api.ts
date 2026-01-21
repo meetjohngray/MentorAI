@@ -14,9 +14,17 @@ export const healthCheck = async () => {
   return response.data;
 };
 
-export const search = async (query: string, limit: number = 5) => {
+export type SourceType = 'dayone' | 'wordpress';
+
+export interface SearchParams {
+  query: string;
+  limit?: number;
+  source?: SourceType;
+}
+
+export const search = async ({ query, limit = 5, source }: SearchParams) => {
   const response = await api.get('/search', {
-    params: { q: query, limit },
+    params: { q: query, limit, source },
   });
   return response.data;
 };

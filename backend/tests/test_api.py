@@ -23,30 +23,34 @@ async def client():
 
 @pytest.fixture
 def setup_test_vector_store():
-    """Set up a temporary vector store with test data."""
+    """Set up a temporary vector store with test data from multiple sources."""
     temp_dir = tempfile.mkdtemp()
 
     # Initialize vector store and embedding service
     vector_store = initialize_db(temp_dir, "test_collection")
     embedding_service = get_embedding_service()
 
-    # Add some test documents
+    # Add test documents from different sources
     test_docs = [
         "This is about meditation and mindfulness practice.",
         "Python programming and software development.",
-        "Nature walks and outdoor activities."
+        "Nature walks and outdoor activities.",
+        "A blog post about meditation techniques.",
+        "WordPress article on coding best practices."
     ]
 
     embeddings = embedding_service.embed_batch(test_docs)
 
     vector_store.add_documents(
-        ids=["doc1", "doc2", "doc3"],
+        ids=["doc1", "doc2", "doc3", "doc4", "doc5"],
         documents=test_docs,
         embeddings=embeddings,
         metadatas=[
             {"source_type": "dayone", "tags": "meditation"},
             {"source_type": "dayone", "tags": "coding"},
-            {"source_type": "dayone", "tags": "nature"}
+            {"source_type": "dayone", "tags": "nature"},
+            {"source_type": "wordpress", "tags": "meditation", "title": "Meditation Guide"},
+            {"source_type": "wordpress", "tags": "coding", "title": "Coding Tips"}
         ]
     )
 
@@ -224,6 +228,63 @@ class TestSearchEndpoint:
                 # (converted from distance)
                 assert "relevance_score" in result
                 assert isinstance(result["relevance_score"], (int, float))
+
+    @pytest.mark.asyncio
+    async def test_search_filter_by_dayone_source(self, client, setup_test_vector_store):
+        """Test filtering search results by DayOne source."""
+        response = await client.get("/search?q=meditation&source=dayone")
+
+        assert response.status_code == 200
+        data = response.json()
+
+        # All results should be from dayone
+        for result in data["results"]:
+            assert result["metadata"]["source_type"] == "dayone"
+
+    @pytest.mark.asyncio
+    async def test_search_filter_by_wordpress_source(self, client, setup_test_vector_store):
+        """Test filtering search results by WordPress source."""
+        response = await client.get("/search?q=meditation&source=wordpress")
+
+        assert response.status_code == 200
+        data = response.json()
+
+        # All results should be from wordpress
+        for result in data["results"]:
+            assert result["metadata"]["source_type"] == "wordpress"
+
+    @pytest.mark.asyncio
+    async def test_search_without_source_returns_all(self, client, setup_test_vector_store):
+        """Test that search without source filter returns results from all sources."""
+        response = await client.get("/search?q=meditation&limit=10")
+
+        assert response.status_code == 200
+        data = response.json()
+
+        # Should have results from both sources
+        source_types = {result["metadata"]["source_type"] for result in data["results"]}
+        assert "dayone" in source_types or "wordpress" in source_types
+
+    @pytest.mark.asyncio
+    async def test_search_invalid_source_returns_error(self, client, setup_test_vector_store):
+        """Test that invalid source type returns 400 error."""
+        response = await client.get("/search?q=meditation&source=invalid")
+
+        assert response.status_code == 400
+        data = response.json()
+        assert "Invalid source type" in data["detail"]
+
+    @pytest.mark.asyncio
+    async def test_search_source_case_insensitive(self, client, setup_test_vector_store):
+        """Test that source filter is case insensitive."""
+        response = await client.get("/search?q=meditation&source=DayOne")
+
+        assert response.status_code == 200
+        data = response.json()
+
+        # Should work with different casing
+        for result in data["results"]:
+            assert result["metadata"]["source_type"] == "dayone"
 
 
 @pytest.mark.integration

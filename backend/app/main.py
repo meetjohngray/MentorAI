@@ -71,7 +71,8 @@ async def health_check():
 @app.get("/search")
 async def search(
     q: str = Query(..., description="Search query", min_length=1),
-    limit: int = Query(5, description="Number of results to return", ge=1, le=20)
+    limit: int = Query(5, description="Number of results to return", ge=1, le=20),
+    source: str = Query(None, description="Filter by source type (dayone, wordpress)")
 ):
     """
     Search the personal knowledge base using semantic similarity.
@@ -79,6 +80,7 @@ async def search(
     Args:
         q: Search query string
         limit: Maximum number of results to return (1-20)
+        source: Optional filter by source type (dayone, wordpress)
 
     Returns:
         List of matching chunks with metadata and relevance scores
@@ -101,13 +103,24 @@ async def search(
             detail="No documents in vector store. Please run the ingestion script first."
         )
 
+    # Validate source filter before any expensive operations
+    where_filter = None
+    if source:
+        valid_sources = ["dayone", "wordpress"]
+        if source.lower() not in valid_sources:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid source type. Must be one of: {', '.join(valid_sources)}"
+            )
+        where_filter = {"source_type": source.lower()}
+
     try:
         # Get embedding service and embed the query
         embedding_service = get_embedding_service(settings.embedding_model)
         query_embedding = embedding_service.embed_text(q)
 
         # Search the vector store
-        results = vector_store.search(query_embedding, n_results=limit)
+        results = vector_store.search(query_embedding, n_results=limit, where=where_filter)
 
         # Format results
         formatted_results = []

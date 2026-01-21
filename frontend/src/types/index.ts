@@ -1,16 +1,36 @@
+// Base metadata shared by all sources
+interface BaseMetadata {
+  source_type: 'dayone' | 'wordpress';
+  date: string;
+  tags: string;
+  chunk_index: number;
+  total_chunks: number;
+}
+
+// DayOne-specific metadata
+interface DayOneMetadata extends BaseMetadata {
+  source_type: 'dayone';
+  entry_id: string;
+  entry_index: number;
+  has_photos: boolean;
+  photo_count: number;
+}
+
+// WordPress-specific metadata
+interface WordPressMetadata extends BaseMetadata {
+  source_type: 'wordpress';
+  post_id: string;
+  title: string;
+  post_index: number;
+  categories: string;
+}
+
+export type SearchResultMetadata = DayOneMetadata | WordPressMetadata;
+
 export interface SearchResult {
   id: string;
   text: string;
-  metadata: {
-    source_type: string;
-    entry_id: string;
-    date: string;
-    tags: string;
-    has_photos: boolean;
-    photo_count: number;
-    chunk_index: number;
-    total_chunks: number;
-  };
+  metadata: SearchResultMetadata;
   distance: number;
   relevance_score: number;
 }
