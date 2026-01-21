@@ -15,6 +15,7 @@ from app.services.retrieval import (
     RetrievalService,
     RetrievalResult,
     RetrievedChunk,
+    SourcePriority,
     get_retrieval_service,
     reset_retrieval_service,
 )
@@ -204,22 +205,22 @@ class TestSystemPrompt:
 class TestRetrievalFormatting:
     """Test retrieval context formatting."""
 
-    def test_format_personal_chunks(self, sample_chunks):
-        """Test formatting of personal history chunks."""
+    def test_format_journal_and_blog_chunks(self, sample_chunks):
+        """Test formatting of journal and blog chunks separately."""
         service = RetrievalService(top_k=5)
-        personal = [c for c in sample_chunks if c.is_personal]
+        journal_chunks = [c for c in sample_chunks if c.is_journal]
+        blog_chunks = [c for c in sample_chunks if c.is_blog]
 
-        formatted = service._format_personal_chunks(personal)
+        formatted = service._format_context(journal_chunks, blog_chunks, [])
 
-        assert "FROM THE USER'S PERSONAL HISTORY" in formatted
-        assert "Journal Entry" in formatted
-        assert "Blog Post" in formatted
+        assert "FROM YOUR PRIVATE JOURNAL" in formatted
+        assert "FROM YOUR PUBLIC WRITING" in formatted
         assert "meditation" in formatted.lower()
 
     def test_format_empty_chunks(self):
         """Test formatting with no chunks."""
         service = RetrievalService(top_k=5)
-        formatted = service._format_context([], [])
+        formatted = service._format_context([], [], [])
         assert "No relevant context found" in formatted
 
     def test_retrieved_chunk_properties(self, sample_chunks):
@@ -227,9 +228,42 @@ class TestRetrievalFormatting:
         dayone_chunk = sample_chunks[0]
         wordpress_chunk = sample_chunks[1]
 
+        assert dayone_chunk.is_journal is True
+        assert dayone_chunk.is_blog is False
+        assert wordpress_chunk.is_blog is True
+        assert wordpress_chunk.is_journal is False
         assert dayone_chunk.is_personal is True
         assert wordpress_chunk.is_personal is True
         assert dayone_chunk.is_wisdom is False
+
+
+@pytest.mark.unit
+class TestSourcePriorityDetection:
+    """Test source priority detection from queries."""
+
+    def test_detects_blog_keywords(self):
+        """Test detection of blog/public writing queries."""
+        service = RetrievalService(top_k=5)
+
+        assert service._detect_source_priority("What do my blog posts say about work?") == SourcePriority.BLOG
+        assert service._detect_source_priority("Show me my public writing on creativity") == SourcePriority.BLOG
+        assert service._detect_source_priority("What articles have I published?") == SourcePriority.BLOG
+
+    def test_detects_journal_keywords(self):
+        """Test detection of journal/private writing queries."""
+        service = RetrievalService(top_k=5)
+
+        assert service._detect_source_priority("What patterns are in my journal?") == SourcePriority.JOURNAL
+        assert service._detect_source_priority("Show me my private reflections") == SourcePriority.JOURNAL
+        assert service._detect_source_priority("What do my diary entries say?") == SourcePriority.JOURNAL
+
+    def test_no_priority_for_general_queries(self):
+        """Test that general queries have no source priority."""
+        service = RetrievalService(top_k=5)
+
+        assert service._detect_source_priority("What do I think about work?") == SourcePriority.NONE
+        assert service._detect_source_priority("Tell me about meditation") == SourcePriority.NONE
+        assert service._detect_source_priority("What patterns do you see?") == SourcePriority.NONE
 
 
 @pytest.mark.integration
