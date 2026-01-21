@@ -1,3 +1,35 @@
+// ============================================================================
+// Chat Types
+// ============================================================================
+
+export interface ChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+export interface ChatRequest {
+  message: string;
+  conversation_history: ChatMessage[];
+}
+
+export interface Source {
+  id: string;
+  text: string;
+  source_type: string;
+  date?: string;
+  title?: string;
+  relevance_score: number;
+}
+
+export interface ChatResponse {
+  response: string;
+  sources: Source[];
+}
+
+// ============================================================================
+// Search Types
+// ============================================================================
+
 // Base metadata shared by all sources
 interface BaseMetadata {
   source_type: 'dayone' | 'wordpress';
@@ -40,6 +72,10 @@ export interface SearchResponse {
   num_results: number;
   results: SearchResult[];
 }
+
+// ============================================================================
+// Health Types
+// ============================================================================
 
 export interface HealthResponse {
   status: string;
