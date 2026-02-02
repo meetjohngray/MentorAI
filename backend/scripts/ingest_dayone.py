@@ -13,16 +13,13 @@ If no path is provided, it looks for JSON files in backend/data/raw/dayone/
 import json
 import sys
 from pathlib import Path
-from datetime import datetime
 from typing import List, Dict, Any
 import logging
 
 # Add parent directory to path to import app modules
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from app.config import settings
-from app.services.embeddings import get_embedding_service
-from app.database.vector_store import initialize_db
+from scripts.ingestion_utils import chunk_text, embed_and_store, find_export_file
 
 # Setup logging
 logging.basicConfig(
@@ -30,75 +27,6 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
-
-
-def estimate_tokens(text: str) -> int:
-    """
-    Rough estimate of token count (assuming ~4 chars per token).
-
-    Args:
-        text: Text to estimate
-
-    Returns:
-        Estimated token count
-    """
-    return len(text) // 4
-
-
-def chunk_text(text: str, target_tokens: int = 650, max_tokens: int = 800) -> List[str]:
-    """
-    Split text into chunks, preferring paragraph boundaries.
-
-    Args:
-        text: Text to chunk
-        target_tokens: Target tokens per chunk
-        max_tokens: Maximum tokens per chunk
-
-    Returns:
-        List of text chunks
-    """
-    if estimate_tokens(text) <= max_tokens:
-        return [text]
-
-    chunks = []
-    paragraphs = text.split('\n\n')
-    current_chunk = []
-    current_tokens = 0
-
-    for paragraph in paragraphs:
-        paragraph = paragraph.strip()
-        if not paragraph:
-            continue
-
-        para_tokens = estimate_tokens(paragraph)
-
-        # If single paragraph exceeds max, split it on sentences
-        if para_tokens > max_tokens:
-            sentences = paragraph.split('. ')
-            for sentence in sentences:
-                sent_tokens = estimate_tokens(sentence)
-                if current_tokens + sent_tokens > target_tokens and current_chunk:
-                    chunks.append('\n\n'.join(current_chunk))
-                    current_chunk = [sentence]
-                    current_tokens = sent_tokens
-                else:
-                    current_chunk.append(sentence)
-                    current_tokens += sent_tokens
-        else:
-            # Add paragraph to current chunk if it fits
-            if current_tokens + para_tokens > target_tokens and current_chunk:
-                chunks.append('\n\n'.join(current_chunk))
-                current_chunk = [paragraph]
-                current_tokens = para_tokens
-            else:
-                current_chunk.append(paragraph)
-                current_tokens += para_tokens
-
-    # Add remaining chunk
-    if current_chunk:
-        chunks.append('\n\n'.join(current_chunk))
-
-    return chunks
 
 
 def parse_dayone_entry(entry: Dict[str, Any]) -> Dict[str, Any]:
@@ -200,64 +128,8 @@ def ingest_dayone_export(json_path: Path) -> None:
         logger.warning("No chunks generated - all entries may be empty")
         return
 
-    # Initialize services
-    logger.info("Initializing embedding service...")
-    embedding_service = get_embedding_service(settings.embedding_model)
-
-    logger.info("Initializing vector store...")
-    vector_store = initialize_db(settings.chroma_path)
-
-    # Generate embeddings in batches
-    logger.info("Generating embeddings...")
-    texts = [chunk["text"] for chunk in all_chunks]
-    embeddings = embedding_service.embed_batch(texts, batch_size=32, show_progress=True)
-
-    # Add to vector store
-    logger.info("Adding documents to vector store...")
-    ids = [chunk["id"] for chunk in all_chunks]
-    metadatas = [chunk["metadata"] for chunk in all_chunks]
-
-    vector_store.add_documents(
-        ids=ids,
-        documents=texts,
-        embeddings=embeddings,
-        metadatas=metadatas
-    )
-
-    # Print stats
-    stats = vector_store.get_collection_stats()
-    logger.info("=" * 60)
-    logger.info("Ingestion complete!")
-    logger.info(f"Total documents in vector store: {stats['total_documents']}")
-    logger.info(f"Persist directory: {stats['persist_directory']}")
-    logger.info("=" * 60)
-
-
-def find_dayone_export() -> Path:
-    """
-    Find a DayOne JSON export in the default location.
-
-    Returns:
-        Path to the export file
-
-    Raises:
-        FileNotFoundError: If no export found
-    """
-    raw_dir = Path(__file__).parent.parent / "data" / "raw" / "dayone"
-    raw_dir.mkdir(parents=True, exist_ok=True)
-
-    json_files = list(raw_dir.glob("*.json"))
-
-    if not json_files:
-        raise FileNotFoundError(
-            f"No JSON files found in {raw_dir}\n"
-            "Please export your DayOne journal and place the JSON file there."
-        )
-
-    if len(json_files) > 1:
-        logger.warning(f"Multiple JSON files found. Using: {json_files[0]}")
-
-    return json_files[0]
+    # Embed and store
+    embed_and_store(all_chunks)
 
 
 def main():
@@ -270,7 +142,7 @@ def main():
                 logger.error(f"File not found: {json_path}")
                 sys.exit(1)
         else:
-            json_path = find_dayone_export()
+            json_path = find_export_file("dayone", "*.json")
 
         ingest_dayone_export(json_path)
 

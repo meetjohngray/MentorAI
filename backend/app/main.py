@@ -12,6 +12,7 @@ import logging
 from app.config import settings
 from app.services.embeddings import get_embedding_service
 from app.database.vector_store import initialize_db, get_vector_store
+from app.services.retrieval import get_retrieval_service
 from app.routers.chat import router as chat_router
 
 # Setup logging
@@ -25,10 +26,10 @@ app = FastAPI(
     version="0.1.0"
 )
 
-# Allow requests from the React frontend (running on a different port)
+# Allow requests from the React frontend (configurable via CORS_ORIGINS env var)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],  # Vite's default port
+    allow_origins=settings.get_cors_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -108,7 +109,6 @@ async def search(
         )
 
     # Validate source filter before any expensive operations
-    where_filter = None
     if source:
         valid_sources = ["dayone", "wordpress"]
         if source.lower() not in valid_sources:
@@ -116,25 +116,25 @@ async def search(
                 status_code=400,
                 detail=f"Invalid source type. Must be one of: {', '.join(valid_sources)}"
             )
-        where_filter = {"source_type": source.lower()}
 
     try:
-        # Get embedding service and embed the query
-        embedding_service = get_embedding_service(settings.embedding_model)
-        query_embedding = embedding_service.embed_text(q)
-
-        # Search the vector store
-        results = vector_store.search(query_embedding, n_results=limit, where=where_filter)
+        # Use RetrievalService for search
+        retrieval_service = get_retrieval_service()
+        result = retrieval_service.retrieve(
+            query=q,
+            top_k=limit,
+            source_filter=source.lower() if source else None
+        )
 
         # Format results
         formatted_results = []
-        for idx in range(len(results["ids"])):
+        for chunk in result.chunks:
             formatted_results.append({
-                "id": results["ids"][idx],
-                "text": results["documents"][idx],
-                "metadata": results["metadatas"][idx],
-                "distance": results["distances"][idx],
-                "relevance_score": 1 - results["distances"][idx]  # Convert distance to similarity
+                "id": chunk.id,
+                "text": chunk.text,
+                "metadata": chunk.metadata,
+                "distance": chunk.distance,
+                "relevance_score": chunk.relevance_score
             })
 
         return {
@@ -145,4 +145,4 @@ async def search(
 
     except Exception as e:
         logger.error(f"Search error: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
+        raise HTTPException(status_code=500, detail="Search failed")

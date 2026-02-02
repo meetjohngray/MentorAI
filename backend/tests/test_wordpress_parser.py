@@ -10,9 +10,8 @@ import sys
 # Add scripts directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent / "scripts"))
 
+from ingestion_utils import estimate_tokens, chunk_text
 from ingest_wordpress import (
-    estimate_tokens,
-    chunk_text,
     strip_html,
     parse_wordpress_item,
     process_post,

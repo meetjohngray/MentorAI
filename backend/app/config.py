@@ -5,7 +5,7 @@ Loads settings from environment variables.
 
 import os
 from enum import Enum
-from typing import Optional
+from typing import List, Optional, Union
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field
 
@@ -93,7 +93,18 @@ class Settings(BaseSettings):
 
     # Retrieval settings
     retrieval_top_k: int = 10  # Number of chunks to retrieve
-    
+
+    # Chunking settings
+    chunk_target_tokens: int = 650  # Target tokens per chunk
+    chunk_max_tokens: int = 800  # Maximum tokens per chunk
+
+    # CORS settings
+    cors_origins: str = "http://localhost:5173"  # Comma-separated allowed origins
+
+    def get_cors_origins(self) -> List[str]:
+        """Parse CORS origins from comma-separated string."""
+        return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
+
     def get_model_info(self) -> dict:
         """Get information about the currently configured model."""
         try:
@@ -103,7 +114,7 @@ class Settings(BaseSettings):
             # Model string not in enum (possibly a new model)
             return {"name": self.claude_model, "description": "Custom/new model"}
     
-    def set_model(self, model: ClaudeModel | str) -> None:
+    def set_model(self, model: Union[ClaudeModel, str]) -> None:
         """Change the active model.
         
         Args:

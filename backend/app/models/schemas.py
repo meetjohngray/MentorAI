@@ -17,6 +17,7 @@ class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1, description="The user's message")
     conversation_history: List[ChatMessage] = Field(
         default_factory=list,
+        max_length=100,
         description="Previous messages in the conversation"
     )
 

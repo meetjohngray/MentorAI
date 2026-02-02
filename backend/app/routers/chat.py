@@ -8,9 +8,9 @@ from typing import List
 
 from fastapi import APIRouter, HTTPException
 
-from app.models.schemas import ChatRequest, ChatResponse, SourceChunk
+from app.models.schemas import ChatMessage, ChatRequest, ChatResponse, SourceChunk
 from app.services.llm import get_llm_service, LLMError
-from app.services.retrieval import get_retrieval_service
+from app.services.retrieval import get_retrieval_service, RetrievedChunk
 from app.prompts.system_prompt import get_system_prompt
 
 logger = logging.getLogger(__name__)
@@ -91,7 +91,7 @@ async def chat(request: ChatRequest) -> ChatResponse:
 
 
 def _build_messages(
-    conversation_history: List,
+    conversation_history: List[ChatMessage],
     current_message: str
 ) -> List[dict]:
     """
@@ -122,7 +122,7 @@ def _build_messages(
     return messages
 
 
-def _format_sources(chunks: List) -> List[SourceChunk]:
+def _format_sources(chunks: List[RetrievedChunk]) -> List[SourceChunk]:
     """
     Format retrieved chunks as source objects.
 

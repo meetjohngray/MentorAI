@@ -10,9 +10,8 @@ import sys
 # Add scripts directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent / "scripts"))
 
+from ingestion_utils import estimate_tokens, chunk_text
 from ingest_dayone import (
-    estimate_tokens,
-    chunk_text,
     parse_dayone_entry,
     process_entry
 )

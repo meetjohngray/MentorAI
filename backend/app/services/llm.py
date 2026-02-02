@@ -4,7 +4,7 @@ Handles all communication with the Anthropic API.
 """
 
 import logging
-from typing import List, Optional, AsyncIterator
+from typing import Iterator, List, Optional
 
 import anthropic
 from anthropic import Anthropic, APIError
@@ -74,15 +74,17 @@ class LLMService:
             logger.error(f"Claude API error: {e}")
             raise LLMError(f"Failed to generate response: {e}") from e
 
-    async def generate_response_stream(
+    def generate_response_stream(
         self,
         messages: List[dict],
         system_prompt: str,
         max_tokens: int = 4096,
         temperature: float = 1.0,
-    ) -> AsyncIterator[str]:
+    ) -> Iterator[str]:
         """
         Generate a streaming response from Claude.
+
+        Uses the synchronous Anthropic client's stream context manager.
 
         Args:
             messages: List of message dicts with 'role' and 'content'

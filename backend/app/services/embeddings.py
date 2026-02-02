@@ -4,7 +4,7 @@ Provides text embedding capabilities for the vector store.
 """
 
 from sentence_transformers import SentenceTransformer
-from typing import List, Union
+from typing import List, Optional
 import logging
 
 logger = logging.getLogger(__name__)
@@ -69,7 +69,7 @@ class EmbeddingService:
 
 
 # Global instance - initialized once when first imported
-_embedding_service: EmbeddingService = None
+_embedding_service: Optional[EmbeddingService] = None
 
 
 def get_embedding_service(model_name: str = "all-MiniLM-L6-v2") -> EmbeddingService:
