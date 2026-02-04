@@ -92,4 +92,54 @@ describe('ChatMessage', () => {
 
     expect(screen.queryByText(/source/i)).not.toBeInTheDocument();
   });
+
+  it('shows wisdom source with tradition and text title', () => {
+    const message: ChatMessageType = {
+      role: 'assistant',
+      content: 'As the Heart Sutra teaches...',
+    };
+    const sources: Source[] = [
+      {
+        id: 'wisdom-1',
+        text: 'Form is emptiness, emptiness is form.',
+        source_type: 'wisdom',
+        relevance_score: 0.85,
+        tradition: 'Buddhism',
+        teacher: 'Traditional',
+        text_title: 'Heart Sutra',
+      },
+    ];
+
+    render(<ChatMessage message={message} sources={sources} />);
+
+    expect(screen.getByText('1 source referenced')).toBeInTheDocument();
+  });
+
+  it('shows multiple source types together', () => {
+    const message: ChatMessageType = {
+      role: 'assistant',
+      content: 'Drawing from your journal and wisdom traditions...',
+    };
+    const sources: Source[] = [
+      {
+        id: 'src-1',
+        text: 'Journal entry about meditation',
+        source_type: 'dayone',
+        date: '2024-01-15',
+        relevance_score: 0.9,
+      },
+      {
+        id: 'wisdom-1',
+        text: 'Form is emptiness, emptiness is form.',
+        source_type: 'wisdom',
+        relevance_score: 0.85,
+        tradition: 'Buddhism',
+        text_title: 'Heart Sutra',
+      },
+    ];
+
+    render(<ChatMessage message={message} sources={sources} />);
+
+    expect(screen.getByText('2 sources referenced')).toBeInTheDocument();
+  });
 });

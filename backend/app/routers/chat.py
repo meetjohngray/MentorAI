@@ -141,7 +141,10 @@ def _format_sources(chunks: List[RetrievedChunk]) -> List[SourceChunk]:
             source_type=chunk.source_type,
             date=chunk.metadata.get("date"),
             title=chunk.metadata.get("title"),
-            relevance_score=chunk.relevance_score
+            relevance_score=chunk.relevance_score,
+            tradition=chunk.metadata.get("tradition"),
+            teacher=chunk.metadata.get("teacher"),
+            text_title=chunk.metadata.get("text_title"),
         )
         sources.append(source)
 

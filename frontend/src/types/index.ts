@@ -15,10 +15,14 @@ export interface ChatRequest {
 export interface Source {
   id: string;
   text: string;
-  source_type: string;
+  source_type: 'dayone' | 'wordpress' | 'wisdom';
   date?: string;
   title?: string;
   relevance_score: number;
+  // Wisdom-specific fields
+  tradition?: string;
+  teacher?: string;
+  text_title?: string;
 }
 
 export interface ChatResponse {
@@ -32,7 +36,7 @@ export interface ChatResponse {
 
 // Base metadata shared by all sources
 interface BaseMetadata {
-  source_type: 'dayone' | 'wordpress';
+  source_type: 'dayone' | 'wordpress' | 'wisdom';
   date: string;
   tags: string;
   chunk_index: number;
@@ -57,7 +61,15 @@ interface WordPressMetadata extends BaseMetadata {
   categories: string;
 }
 
-export type SearchResultMetadata = DayOneMetadata | WordPressMetadata;
+// Wisdom-specific metadata
+interface WisdomMetadata extends BaseMetadata {
+  source_type: 'wisdom';
+  tradition: string;
+  teacher: string;
+  text_title: string;
+}
+
+export type SearchResultMetadata = DayOneMetadata | WordPressMetadata | WisdomMetadata;
 
 export interface SearchResult {
   id: string;

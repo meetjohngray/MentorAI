@@ -30,6 +30,10 @@ class SourceChunk(BaseModel):
     date: Optional[str] = None
     title: Optional[str] = None
     relevance_score: float
+    # Wisdom-specific fields
+    tradition: Optional[str] = None
+    teacher: Optional[str] = None
+    text_title: Optional[str] = None
 
 
 class ChatResponse(BaseModel):

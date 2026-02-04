@@ -35,6 +35,28 @@ export function SourcesPanel({ sources }: SourcesPanelProps) {
   );
 }
 
+function getSourceLabel(sourceType: Source['source_type']): string {
+  switch (sourceType) {
+    case 'dayone':
+      return 'Journal';
+    case 'wordpress':
+      return 'Blog';
+    case 'wisdom':
+      return 'Wisdom';
+    default:
+      return 'Source';
+  }
+}
+
+function getWisdomDetail(source: Source): string | null {
+  if (source.source_type !== 'wisdom') return null;
+  const parts: string[] = [];
+  if (source.tradition) parts.push(source.tradition);
+  if (source.text_title) parts.push(`"${source.text_title}"`);
+  if (source.teacher && source.teacher !== 'Traditional') parts.push(`— ${source.teacher}`);
+  return parts.length > 0 ? parts.join(' ') : null;
+}
+
 function SourceCard({ source }: { source: Source }) {
   const formatDate = (dateStr?: string) => {
     if (!dateStr) return null;
@@ -50,7 +72,8 @@ function SourceCard({ source }: { source: Source }) {
     }
   };
 
-  const sourceLabel = source.source_type === 'dayone' ? 'Journal' : 'Blog';
+  const sourceLabel = getSourceLabel(source.source_type);
+  const wisdomDetail = getWisdomDetail(source);
 
   return (
     <div className={styles.source}>
@@ -63,6 +86,9 @@ function SourceCard({ source }: { source: Source }) {
         )}
         {source.title && (
           <span className={styles.sourceTitle}>{source.title}</span>
+        )}
+        {wisdomDetail && (
+          <span className={styles.sourceTitle}>{wisdomDetail}</span>
         )}
       </div>
       <p className={styles.sourceText}>{source.text}</p>

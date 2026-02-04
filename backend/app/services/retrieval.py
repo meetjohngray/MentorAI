@@ -21,6 +21,7 @@ class SourcePriority(Enum):
     NONE = "none"  # No specific source priority
     JOURNAL = "journal"  # Prioritize DayOne/private writing
     BLOG = "blog"  # Prioritize WordPress/public writing
+    WISDOM = "wisdom"  # Prioritize contemplative/wisdom texts
 
 
 # Keywords that suggest the user is asking about specific source types
@@ -33,6 +34,15 @@ JOURNAL_KEYWORDS = [
     r"\bjournal\b", r"\bdiary\b", r"\bprivate\b", r"\bpersonal\b",
     r"\bentry\b", r"\bentries\b", r"\bdayone\b", r"\bday one\b",
     r"\bprivate writing\b", r"\breflection\b", r"\breflections\b"
+]
+WISDOM_KEYWORDS = [
+    r"\bwisdom\b", r"\bteaching\b", r"\bteachings\b", r"\btradition\b",
+    r"\btraditions\b", r"\bbuddhis[mt]\b", r"\bzen\b", r"\badvaita\b",
+    r"\bramana\b", r"\bsutra\b", r"\bkoan\b", r"\bdhammapada\b",
+    r"\bself.inquiry\b", r"\bcontemplative\b", r"\bmeditation tradition\b",
+    r"\bstoic\b", r"\bstoicism\b", r"\btao\b", r"\btaoism\b",
+    r"\bspiritua?l\b", r"\bscripture\b", r"\bsacred text\b",
+    r"\bmindfulness teaching\b", r"\bvedanta\b",
 ]
 
 
@@ -109,14 +119,20 @@ class RetrievalService:
         """
         query_lower = query.lower()
 
-        # Check for blog/public writing keywords
         blog_matches = sum(1 for pattern in BLOG_KEYWORDS if re.search(pattern, query_lower))
         journal_matches = sum(1 for pattern in JOURNAL_KEYWORDS if re.search(pattern, query_lower))
+        wisdom_matches = sum(1 for pattern in WISDOM_KEYWORDS if re.search(pattern, query_lower))
 
-        if blog_matches > journal_matches and blog_matches > 0:
-            return SourcePriority.BLOG
-        elif journal_matches > blog_matches and journal_matches > 0:
-            return SourcePriority.JOURNAL
+        counts = {
+            SourcePriority.BLOG: blog_matches,
+            SourcePriority.JOURNAL: journal_matches,
+            SourcePriority.WISDOM: wisdom_matches,
+        }
+
+        # Find the highest match count
+        best = max(counts, key=counts.get)
+        if counts[best] > 0:
+            return best
         return SourcePriority.NONE
 
     def retrieve(
@@ -169,19 +185,25 @@ class RetrievalService:
             )
             chunks = self._results_to_chunks(results)
         elif detected_priority == SourcePriority.BLOG:
-            # User asking about blog - 80% blog, 20% journal
+            # User asking about blog - 80% blog, 10% journal, 10% wisdom
             chunks = self._prioritized_search(
                 vector_store, query_embedding, top_k,
                 primary_source="wordpress", primary_ratio=0.8
             )
         elif detected_priority == SourcePriority.JOURNAL:
-            # User asking about journal - 80% journal, 20% blog
+            # User asking about journal - 80% journal, 10% blog, 10% wisdom
             chunks = self._prioritized_search(
                 vector_store, query_embedding, top_k,
                 primary_source="dayone", primary_ratio=0.8
             )
+        elif detected_priority == SourcePriority.WISDOM:
+            # User asking about wisdom - 60% wisdom, 20% journal, 20% blog
+            chunks = self._prioritized_search(
+                vector_store, query_embedding, top_k,
+                primary_source="wisdom", primary_ratio=0.6
+            )
         else:
-            # General query - balanced 50/50 retrieval from each source
+            # General query - balanced 40/40/20 retrieval
             chunks = self._balanced_search(vector_store, query_embedding, top_k)
 
         # Separate by source type
@@ -212,7 +234,8 @@ class RetrievalService:
         Search with balanced representation from all source types.
 
         Queries each source separately to ensure representation regardless
-        of how much content exists in each source.
+        of how much content exists in each source. Split: 40% journal,
+        40% blog, 20% wisdom.
 
         Args:
             vector_store: The vector store to search
@@ -222,13 +245,14 @@ class RetrievalService:
         Returns:
             List of RetrievedChunk objects with balanced source representation
         """
-        # Split evenly between sources (can add wisdom later)
-        per_source = max(1, top_k // 2)
+        # 40% journal, 40% blog, 20% wisdom
+        personal_per_source = max(1, int(top_k * 0.4))
+        wisdom_count = max(1, top_k - 2 * personal_per_source)
 
         # Get top results from DayOne (journal)
         journal_results = vector_store.search(
             query_embedding,
-            n_results=per_source,
+            n_results=personal_per_source,
             where={"source_type": "dayone"}
         )
         journal_chunks = self._results_to_chunks(journal_results)
@@ -236,18 +260,26 @@ class RetrievalService:
         # Get top results from WordPress (blog)
         blog_results = vector_store.search(
             query_embedding,
-            n_results=per_source,
+            n_results=personal_per_source,
             where={"source_type": "wordpress"}
         )
         blog_chunks = self._results_to_chunks(blog_results)
 
+        # Get top results from wisdom texts
+        wisdom_results = vector_store.search(
+            query_embedding,
+            n_results=wisdom_count,
+            where={"source_type": "wisdom"}
+        )
+        wisdom_chunks = self._results_to_chunks(wisdom_results)
+
         # Combine and sort by relevance
-        all_chunks = journal_chunks + blog_chunks
+        all_chunks = journal_chunks + blog_chunks + wisdom_chunks
         all_chunks.sort(key=lambda c: c.relevance_score, reverse=True)
 
         logger.info(
             f"Balanced search: {len(journal_chunks)} journal, "
-            f"{len(blog_chunks)} blog chunks retrieved"
+            f"{len(blog_chunks)} blog, {len(wisdom_chunks)} wisdom chunks retrieved"
         )
 
         return all_chunks[:top_k]
@@ -263,18 +295,24 @@ class RetrievalService:
         """
         Search with priority given to a specific source type.
 
+        Remaining slots are split evenly across the other sources.
+
         Args:
             vector_store: The vector store to search
             query_embedding: Embedded query
             top_k: Total number of results
-            primary_source: Source type to prioritize (dayone, wordpress)
+            primary_source: Source type to prioritize (dayone, wordpress, wisdom)
             primary_ratio: Ratio of results from primary source (0.0-1.0)
 
         Returns:
             List of RetrievedChunk objects
         """
+        all_sources = ["dayone", "wordpress", "wisdom"]
+        secondary_sources = [s for s in all_sources if s != primary_source]
+
         primary_count = max(1, int(top_k * primary_ratio))
-        secondary_count = max(1, top_k - primary_count)
+        remaining = max(1, top_k - primary_count)
+        per_secondary = max(1, remaining // len(secondary_sources))
 
         # Get results from primary source
         primary_results = vector_store.search(
@@ -282,24 +320,22 @@ class RetrievalService:
             n_results=primary_count,
             where={"source_type": primary_source}
         )
-        primary_chunks = self._results_to_chunks(primary_results)
+        all_chunks = self._results_to_chunks(primary_results)
 
-        # Get results from other sources
-        other_source = "dayone" if primary_source == "wordpress" else "wordpress"
-        secondary_results = vector_store.search(
-            query_embedding,
-            n_results=secondary_count,
-            where={"source_type": other_source}
-        )
-        secondary_chunks = self._results_to_chunks(secondary_results)
+        # Get results from each secondary source
+        for source in secondary_sources:
+            secondary_results = vector_store.search(
+                query_embedding,
+                n_results=per_secondary,
+                where={"source_type": source}
+            )
+            all_chunks.extend(self._results_to_chunks(secondary_results))
 
-        # Combine and sort by relevance
-        all_chunks = primary_chunks + secondary_chunks
         all_chunks.sort(key=lambda c: c.relevance_score, reverse=True)
 
         logger.info(
             f"Prioritized search ({primary_source}): "
-            f"{len(primary_chunks)} primary, {len(secondary_chunks)} secondary"
+            f"{primary_count} primary slots, {remaining} secondary slots"
         )
 
         return all_chunks[:top_k]

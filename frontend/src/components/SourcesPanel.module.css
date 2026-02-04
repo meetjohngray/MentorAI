@@ -71,6 +71,11 @@
   color: var(--color-wordpress-text);
 }
 
+.sourceType.wisdom {
+  background-color: var(--color-wisdom-bg);
+  color: var(--color-wisdom-text);
+}
+
 .sourceDate {
   color: var(--color-text-muted);
 }

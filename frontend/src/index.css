@@ -43,6 +43,8 @@
   --color-dayone-text: #a8d0f0;
   --color-wordpress-bg: #3d4a3d;
   --color-wordpress-text: #a8e0a8;
+  --color-wisdom-bg: #4a3d5c;
+  --color-wisdom-text: #d0a8f0;
 
   /* Error */
   --color-error-bg: #3d2a2a;
@@ -76,6 +78,8 @@
     --color-dayone-text: #1e40af;
     --color-wordpress-bg: #dcfce7;
     --color-wordpress-text: #166534;
+    --color-wisdom-bg: #ede9fe;
+    --color-wisdom-text: #5b21b6;
 
     --color-error-bg: #fef2f2;
     --color-error-border: #fecaca;

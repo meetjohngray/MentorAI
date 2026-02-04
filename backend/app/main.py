@@ -77,7 +77,7 @@ async def health_check():
 async def search(
     q: str = Query(..., description="Search query", min_length=1),
     limit: int = Query(5, description="Number of results to return", ge=1, le=20),
-    source: str = Query(None, description="Filter by source type (dayone, wordpress)")
+    source: str = Query(None, description="Filter by source type (dayone, wordpress, wisdom)")
 ):
     """
     Search the personal knowledge base using semantic similarity.
@@ -110,7 +110,7 @@ async def search(
 
     # Validate source filter before any expensive operations
     if source:
-        valid_sources = ["dayone", "wordpress"]
+        valid_sources = ["dayone", "wordpress", "wisdom"]
         if source.lower() not in valid_sources:
             raise HTTPException(
                 status_code=400,

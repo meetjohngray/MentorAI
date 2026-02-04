@@ -1,7 +1,7 @@
 # MentorAI - Claude Code Context
 
 ## Project Overview
-MentorAI is a personal AI companion/mentor that draws on the user's own journals, blog posts, and curated wisdom and contemplative traditions to provide coaching and reflection. It acts as a mirror and accountability partner—compassionate but bluntly honest.
+MentorAI is a personal AI companion/mentor that draws on the user's own journals, blog posts, and curated wisdom from contemplative traditions to provide coaching and reflection. It acts as a mirror and accountability partner—compassionate but bluntly honest.
 
 ## Architecture
 - **Backend**: Python/FastAPI (port 8000)
@@ -21,7 +21,7 @@ backend/
 │   ├── services/
 │   │   ├── embeddings.py    # Text embedding with sentence-transformers
 │   │   ├── llm.py           # Claude API service (sync + streaming)
-│   │   └── retrieval.py     # RAG retrieval with balanced multi-source search
+│   │   └── retrieval.py     # RAG retrieval with 3-way balanced multi-source search
 │   ├── models/
 │   │   └── schemas.py       # Pydantic request/response schemas
 │   ├── prompts/
@@ -35,7 +35,9 @@ backend/
 ├── scripts/
 │   ├── ingestion_utils.py   # Shared: chunk_text, estimate_tokens, embed_and_store
 │   ├── ingest_dayone.py     # DayOne journal ingestion
-│   └── ingest_wordpress.py  # WordPress WXR/XML ingestion
+│   ├── ingest_wordpress.py  # WordPress WXR/XML ingestion
+│   ├── ingest_wisdom.py     # Contemplative wisdom text ingestion
+│   └── download_wisdom_texts.py  # Downloads public domain wisdom texts
 └── tests/
     ├── conftest.py          # Shared pytest fixtures
     ├── test_api.py          # Endpoint integration tests
@@ -45,8 +47,9 @@ backend/
     ├── test_embeddings.py
     ├── test_ingestion_utils.py
     ├── test_llm_service.py  # LLM service + streaming tests
-    ├── test_retrieval_service.py
+    ├── test_retrieval_service.py  # Includes wisdom search tests
     ├── test_vector_store.py
+    ├── test_wisdom_ingestion.py   # Wisdom pipeline tests
     └── test_wordpress_parser.py
 
 frontend/                     # React + TypeScript
@@ -61,13 +64,35 @@ frontend/                     # React + TypeScript
 └── public/
 ```
 
+## Three Source Types
+
+MentorAI retrieves context from three distinct source types, each with different character:
+
+| Source | Type Key | Ingestion Script | Chunk Sizes |
+|--------|----------|------------------|-------------|
+| DayOne journal | `dayone` | `ingest_dayone.py` | 650/800 tokens (default) |
+| WordPress blog | `wordpress` | `ingest_wordpress.py` | 650/800 tokens (default) |
+| Wisdom texts | `wisdom` | `ingest_wisdom.py` | 800/1000 tokens (larger for coherent teachings) |
+
+### Retrieval Strategy
+- **General queries** (no source keywords): 40% journal, 40% blog, 20% wisdom
+- **Source-prioritized queries** (detected via keywords): 80% primary source (or 60% for wisdom), remainder split across others
+- **Explicit filter**: 100% from the specified `source_filter`
+
+### Wisdom Text Architecture
+- Texts organized by tradition in `data/raw/wisdom/<tradition>/` subdirectories
+- `sources.json` manifest provides rich metadata (title, teacher, tradition, attribution)
+- Without `sources.json`, metadata is inferred from directory and file names
+- `download_wisdom_texts.py` fetches from public domain sites but is not required—any `.txt` files work
+- Current traditions: Advaita Vedanta, Buddhism, Zen Buddhism (extensible)
+
 ## Coding Standards
 
 ### DRY Principles
 - **Shared logic belongs in shared modules.** Ingestion scripts use `scripts/ingestion_utils.py` for chunking, embedding, and storage—never duplicate these functions.
 - **All configuration lives in `app/config.py`.** Magic numbers (chunk sizes, token limits, CORS origins, etc.) must be settings, not hardcoded values. Use `from app.config import settings`.
 - **Use existing services.** The `/search` endpoint delegates to `RetrievalService`—don't reimplement embedding+search logic in endpoint handlers.
-- **When adding a new ingestion source**, follow the existing pattern: parse → chunk (via `ingestion_utils.chunk_text`) → build metadata dicts → call `embed_and_store()`.
+- **When adding a new ingestion source**, follow the existing pattern: parse → chunk (via `ingestion_utils.chunk_text`) → build metadata dicts → call `embed_and_store()`. Then update `RetrievalService` to include the new source in balanced/prioritized search, add to `SourcePriority` enum, add keywords, and update valid sources in `main.py`.
 
 ### Python (Backend)
 - Use type hints on all function signatures—including `Optional[]` for nullable singletons
@@ -101,7 +126,7 @@ frontend/                     # React + TypeScript
 - Don't leak error details that might expose file paths or internal state
 
 ## Current Phase
-Phase 1C complete: Full chat pipeline with RAG (retrieval-augmented generation), React frontend with chat UI, balanced multi-source retrieval, 156 backend tests at 94% coverage.
+Phase 2A complete: Contemplative wisdom text ingestion pipeline added as third source type. 3-way balanced retrieval (40/40/20), wisdom-aware keyword detection, download script for public domain texts, system prompt updated with tradition awareness. 181 backend tests at 94% coverage, 25 frontend tests.
 
 ## Commands
 
@@ -110,10 +135,13 @@ Phase 1C complete: Full chat pipeline with RAG (retrieval-augmented generation),
 cd backend
 source venv/bin/activate
 uvicorn app.main:app --reload        # Run dev server (http://localhost:8000)
-pytest -v                             # Run tests (156 tests)
+pytest -v                             # Run tests (181 tests)
 pytest --cov=app --cov-report=html    # Run tests with coverage
 python scripts/ingest_dayone.py       # Ingest DayOne journal data
 python scripts/ingest_wordpress.py    # Ingest WordPress export
+python scripts/download_wisdom_texts.py        # Download wisdom texts (optional)
+python scripts/download_wisdom_texts.py --force # Re-download all wisdom texts
+python scripts/ingest_wisdom.py       # Ingest wisdom texts
 ```
 
 ### Frontend
@@ -130,7 +158,8 @@ npm run lint     # TypeScript + ESLint checks
 - `backend/.env.example` — Documented configuration template
 - `backend/app/config.py` — Single source of truth for all settings
 - `backend/scripts/ingestion_utils.py` — Shared ingestion logic (chunking, embedding, storage)
-- `backend/INGESTION_GUIDE.md` — Instructions for data ingestion
+- `backend/data/raw/wisdom/sources.json` — Wisdom text metadata manifest
+- `backend/INGESTION_GUIDE.md` — Instructions for all three data sources
 - `backend/pytest.ini` — pytest configuration
 
 ## Important Notes
@@ -138,7 +167,14 @@ npm run lint     # TypeScript + ESLint checks
 - ChromaDB persists to `backend/data/chroma/`—delete this folder to reset the vector store
 - When adding new dependencies: update requirements.txt (Python) or package.json (JS)
 - CORS origins are configurable via `CORS_ORIGINS` env var (comma-separated)
-- Chunk sizes are configurable via `CHUNK_TARGET_TOKENS` / `CHUNK_MAX_TOKENS` env vars
+- Default chunk sizes (650/800) are configurable via `CHUNK_TARGET_TOKENS` / `CHUNK_MAX_TOKENS` env vars
+- Wisdom texts use hardcoded larger chunks (800/1000) passed directly to `chunk_text()` since coherent teachings benefit from longer context windows
+- The `_prioritized_search()` method is generalized to handle any number of secondary sources—adding a 4th source type only requires adding it to the `all_sources` list
+
+## Gotchas
+- `_detect_source_priority()` picks the source with the most keyword matches. Ties go to whichever appears first in the dict iteration (blog, journal, wisdom). If a query has equal keyword matches, consider whether the tie-breaking behavior matters.
+- The download script has per-site extractors (`extract_accesstoinsight`, `extract_sacred_texts`, `extract_terebess`). If a site changes layout, the extractor may need updating. The ingestion script itself is independent of the download script.
+- `sources.json` is gitignored along with everything in `data/`. It's created by the project setup, not committed.
 
 ## What NOT to Do
 - Don't commit anything in `backend/data/`
@@ -150,3 +186,4 @@ npm run lint     # TypeScript + ESLint checks
 - Don't use `any` type in TypeScript—define proper interfaces
 - Don't leak internal error details (stack traces, file paths) in API responses
 - Don't add dependencies without confirming they're actually used
+- Don't hardcode source type lists—when adding a new source, update all the touchpoints: `SourcePriority` enum, keyword lists, `_balanced_search()`, `_prioritized_search()`, `valid_sources` in `main.py`, and the system prompt
