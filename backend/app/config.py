@@ -98,6 +98,14 @@ class Settings(BaseSettings):
     chunk_target_tokens: int = 650  # Target tokens per chunk
     chunk_max_tokens: int = 800  # Maximum tokens per chunk
 
+    # Image processing settings
+    # Use a faster/cheaper model for image extraction since it's a simpler task
+    image_extraction_model: str = Field(
+        default=ClaudeModel.HAIKU_3_5.value,
+        description="Claude model to use for image quote extraction"
+    )
+    image_rate_limit_delay: float = 1.0  # Seconds between API calls
+
     # CORS settings
     cors_origins: str = "http://localhost:5173"  # Comma-separated allowed origins
 

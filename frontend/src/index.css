@@ -45,6 +45,8 @@
   --color-wordpress-text: #a8e0a8;
   --color-wisdom-bg: #4a3d5c;
   --color-wisdom-text: #d0a8f0;
+  --color-commonplace-bg: #4a4030;
+  --color-commonplace-text: #f0d8a8;
 
   /* Error */
   --color-error-bg: #3d2a2a;
@@ -80,6 +82,8 @@
     --color-wordpress-text: #166534;
     --color-wisdom-bg: #ede9fe;
     --color-wisdom-text: #5b21b6;
+    --color-commonplace-bg: #fef3c7;
+    --color-commonplace-text: #92400e;
 
     --color-error-bg: #fef2f2;
     --color-error-border: #fecaca;

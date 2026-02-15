@@ -45,7 +45,8 @@ async def chat(request: ChatRequest) -> ChatResponse:
         logger.info(
             f"Retrieved {len(retrieval_result.chunks)} chunks "
             f"({len(retrieval_result.personal_chunks)} personal, "
-            f"{len(retrieval_result.wisdom_chunks)} wisdom)"
+            f"{len(retrieval_result.wisdom_chunks)} wisdom, "
+            f"{len(retrieval_result.commonplace_chunks)} commonplace)"
         )
 
         # Step 2: Build the system prompt with context
@@ -145,6 +146,8 @@ def _format_sources(chunks: List[RetrievedChunk]) -> List[SourceChunk]:
             tradition=chunk.metadata.get("tradition"),
             teacher=chunk.metadata.get("teacher"),
             text_title=chunk.metadata.get("text_title"),
+            author=chunk.metadata.get("author"),
+            book_title=chunk.metadata.get("book_title"),
         )
         sources.append(source)
 

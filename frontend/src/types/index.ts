@@ -15,7 +15,7 @@ export interface ChatRequest {
 export interface Source {
   id: string;
   text: string;
-  source_type: 'dayone' | 'wordpress' | 'wisdom';
+  source_type: 'dayone' | 'wordpress' | 'wisdom' | 'commonplace';
   date?: string;
   title?: string;
   relevance_score: number;
@@ -23,6 +23,9 @@ export interface Source {
   tradition?: string;
   teacher?: string;
   text_title?: string;
+  // Commonplace-specific fields
+  author?: string;
+  book_title?: string;
 }
 
 export interface ChatResponse {
@@ -36,7 +39,7 @@ export interface ChatResponse {
 
 // Base metadata shared by all sources
 interface BaseMetadata {
-  source_type: 'dayone' | 'wordpress' | 'wisdom';
+  source_type: 'dayone' | 'wordpress' | 'wisdom' | 'commonplace';
   date: string;
   tags: string;
   chunk_index: number;
@@ -69,7 +72,16 @@ interface WisdomMetadata extends BaseMetadata {
   text_title: string;
 }
 
-export type SearchResultMetadata = DayOneMetadata | WordPressMetadata | WisdomMetadata;
+// Commonplace-specific metadata
+interface CommonplaceMetadata extends BaseMetadata {
+  source_type: 'commonplace';
+  entry_id: string;
+  entry_index: number;
+  author?: string;
+  book_title?: string;
+}
+
+export type SearchResultMetadata = DayOneMetadata | WordPressMetadata | WisdomMetadata | CommonplaceMetadata;
 
 export interface SearchResult {
   id: string;

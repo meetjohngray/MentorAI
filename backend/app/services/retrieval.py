@@ -22,6 +22,7 @@ class SourcePriority(Enum):
     JOURNAL = "journal"  # Prioritize DayOne/private writing
     BLOG = "blog"  # Prioritize WordPress/public writing
     WISDOM = "wisdom"  # Prioritize contemplative/wisdom texts
+    COMMONPLACE = "commonplace"  # Prioritize commonplace book (collected quotes)
 
 
 # Keywords that suggest the user is asking about specific source types
@@ -43,6 +44,11 @@ WISDOM_KEYWORDS = [
     r"\bstoic\b", r"\bstoicism\b", r"\btao\b", r"\btaoism\b",
     r"\bspiritua?l\b", r"\bscripture\b", r"\bsacred text\b",
     r"\bmindfulness teaching\b", r"\bvedanta\b",
+]
+COMMONPLACE_KEYWORDS = [
+    r"\bcommonplace\b", r"\bquotes?\b", r"\bcollected\b", r"\bsaved\b",
+    r"\bpassages?\b", r"\breadings?\b", r"\bbookmark\b", r"\bbookmarks\b",
+    r"\bfavorite quotes?\b", r"\bsaved quotes?\b", r"\bthings i.ve collected\b",
 ]
 
 
@@ -76,6 +82,11 @@ class RetrievedChunk:
         """Check if this chunk is from wisdom/contemplative texts."""
         return self.source_type == "wisdom"
 
+    @property
+    def is_commonplace(self) -> bool:
+        """Check if this chunk is from the commonplace book (collected quotes)."""
+        return self.source_type == "commonplace"
+
 
 @dataclass
 class RetrievalResult:
@@ -86,12 +97,18 @@ class RetrievalResult:
     journal_chunks: List[RetrievedChunk]
     blog_chunks: List[RetrievedChunk]
     wisdom_chunks: List[RetrievedChunk]
+    commonplace_chunks: List[RetrievedChunk]
     detected_priority: SourcePriority
 
     @property
     def personal_chunks(self) -> List[RetrievedChunk]:
         """All personal writing chunks (journal + blog)."""
         return self.journal_chunks + self.blog_chunks
+
+    @property
+    def curated_chunks(self) -> List[RetrievedChunk]:
+        """All curated wisdom chunks (wisdom texts + commonplace book)."""
+        return self.wisdom_chunks + self.commonplace_chunks
 
 
 class RetrievalService:
@@ -122,11 +139,13 @@ class RetrievalService:
         blog_matches = sum(1 for pattern in BLOG_KEYWORDS if re.search(pattern, query_lower))
         journal_matches = sum(1 for pattern in JOURNAL_KEYWORDS if re.search(pattern, query_lower))
         wisdom_matches = sum(1 for pattern in WISDOM_KEYWORDS if re.search(pattern, query_lower))
+        commonplace_matches = sum(1 for pattern in COMMONPLACE_KEYWORDS if re.search(pattern, query_lower))
 
         counts = {
             SourcePriority.BLOG: blog_matches,
             SourcePriority.JOURNAL: journal_matches,
             SourcePriority.WISDOM: wisdom_matches,
+            SourcePriority.COMMONPLACE: commonplace_matches,
         }
 
         # Find the highest match count
@@ -185,34 +204,43 @@ class RetrievalService:
             )
             chunks = self._results_to_chunks(results)
         elif detected_priority == SourcePriority.BLOG:
-            # User asking about blog - 80% blog, 10% journal, 10% wisdom
+            # User asking about blog - 80% blog, remainder split
             chunks = self._prioritized_search(
                 vector_store, query_embedding, top_k,
                 primary_source="wordpress", primary_ratio=0.8
             )
         elif detected_priority == SourcePriority.JOURNAL:
-            # User asking about journal - 80% journal, 10% blog, 10% wisdom
+            # User asking about journal - 80% journal, remainder split
             chunks = self._prioritized_search(
                 vector_store, query_embedding, top_k,
                 primary_source="dayone", primary_ratio=0.8
             )
         elif detected_priority == SourcePriority.WISDOM:
-            # User asking about wisdom - 60% wisdom, 20% journal, 20% blog
+            # User asking about wisdom - 60% wisdom, remainder split
             chunks = self._prioritized_search(
                 vector_store, query_embedding, top_k,
                 primary_source="wisdom", primary_ratio=0.6
             )
+        elif detected_priority == SourcePriority.COMMONPLACE:
+            # User asking about collected quotes - 60% commonplace, remainder split
+            chunks = self._prioritized_search(
+                vector_store, query_embedding, top_k,
+                primary_source="commonplace", primary_ratio=0.6
+            )
         else:
-            # General query - balanced 40/40/20 retrieval
+            # General query - balanced retrieval
             chunks = self._balanced_search(vector_store, query_embedding, top_k)
 
         # Separate by source type
         journal_chunks = [c for c in chunks if c.is_journal]
         blog_chunks = [c for c in chunks if c.is_blog]
         wisdom_chunks = [c for c in chunks if c.is_wisdom]
+        commonplace_chunks = [c for c in chunks if c.is_commonplace]
 
         # Format the context with clear source labels
-        formatted_context = self._format_context(journal_chunks, blog_chunks, wisdom_chunks)
+        formatted_context = self._format_context(
+            journal_chunks, blog_chunks, wisdom_chunks, commonplace_chunks
+        )
 
         return RetrievalResult(
             query=query,
@@ -221,6 +249,7 @@ class RetrievalService:
             journal_chunks=journal_chunks,
             blog_chunks=blog_chunks,
             wisdom_chunks=wisdom_chunks,
+            commonplace_chunks=commonplace_chunks,
             detected_priority=detected_priority
         )
 
@@ -234,8 +263,8 @@ class RetrievalService:
         Search with balanced representation from all source types.
 
         Queries each source separately to ensure representation regardless
-        of how much content exists in each source. Split: 40% journal,
-        40% blog, 20% wisdom.
+        of how much content exists in each source.
+        Split: 35% journal, 35% blog, 15% wisdom, 15% commonplace.
 
         Args:
             vector_store: The vector store to search
@@ -245,9 +274,9 @@ class RetrievalService:
         Returns:
             List of RetrievedChunk objects with balanced source representation
         """
-        # 40% journal, 40% blog, 20% wisdom
-        personal_per_source = max(1, int(top_k * 0.4))
-        wisdom_count = max(1, top_k - 2 * personal_per_source)
+        # 35% journal, 35% blog, 15% wisdom, 15% commonplace
+        personal_per_source = max(1, int(top_k * 0.35))
+        curated_per_source = max(1, int(top_k * 0.15))
 
         # Get top results from DayOne (journal)
         journal_results = vector_store.search(
@@ -268,18 +297,27 @@ class RetrievalService:
         # Get top results from wisdom texts
         wisdom_results = vector_store.search(
             query_embedding,
-            n_results=wisdom_count,
+            n_results=curated_per_source,
             where={"source_type": "wisdom"}
         )
         wisdom_chunks = self._results_to_chunks(wisdom_results)
 
+        # Get top results from commonplace book
+        commonplace_results = vector_store.search(
+            query_embedding,
+            n_results=curated_per_source,
+            where={"source_type": "commonplace"}
+        )
+        commonplace_chunks = self._results_to_chunks(commonplace_results)
+
         # Combine and sort by relevance
-        all_chunks = journal_chunks + blog_chunks + wisdom_chunks
+        all_chunks = journal_chunks + blog_chunks + wisdom_chunks + commonplace_chunks
         all_chunks.sort(key=lambda c: c.relevance_score, reverse=True)
 
         logger.info(
             f"Balanced search: {len(journal_chunks)} journal, "
-            f"{len(blog_chunks)} blog, {len(wisdom_chunks)} wisdom chunks retrieved"
+            f"{len(blog_chunks)} blog, {len(wisdom_chunks)} wisdom, "
+            f"{len(commonplace_chunks)} commonplace chunks retrieved"
         )
 
         return all_chunks[:top_k]
@@ -307,7 +345,7 @@ class RetrievalService:
         Returns:
             List of RetrievedChunk objects
         """
-        all_sources = ["dayone", "wordpress", "wisdom"]
+        all_sources = ["dayone", "wordpress", "wisdom", "commonplace"]
         secondary_sources = [s for s in all_sources if s != primary_source]
 
         primary_count = max(1, int(top_k * primary_ratio))
@@ -362,7 +400,8 @@ class RetrievalService:
         self,
         journal_chunks: List[RetrievedChunk],
         blog_chunks: List[RetrievedChunk],
-        wisdom_chunks: List[RetrievedChunk]
+        wisdom_chunks: List[RetrievedChunk],
+        commonplace_chunks: Optional[List[RetrievedChunk]] = None,
     ) -> str:
         """
         Format retrieved chunks into context for the prompt.
@@ -371,6 +410,7 @@ class RetrievalService:
             journal_chunks: Chunks from private journal (DayOne)
             blog_chunks: Chunks from public blog (WordPress)
             wisdom_chunks: Chunks from wisdom texts
+            commonplace_chunks: Chunks from the commonplace book
 
         Returns:
             Formatted context string with clear source labels
@@ -391,6 +431,11 @@ class RetrievalService:
         if wisdom_chunks:
             wisdom_section = self._format_wisdom_chunks(wisdom_chunks)
             sections.append(wisdom_section)
+
+        # Format commonplace book section
+        if commonplace_chunks:
+            commonplace_section = self._format_commonplace_chunks(commonplace_chunks)
+            sections.append(commonplace_section)
 
         if not sections:
             return "[No relevant context found]"
@@ -459,6 +504,29 @@ class RetrievalService:
 
         return "\n".join(lines)
 
+    def _format_commonplace_chunks(self, chunks: List[RetrievedChunk]) -> str:
+        """Format commonplace book chunks (collected quotes and passages)."""
+        lines = ["=== FROM YOUR COMMONPLACE BOOK ==="]
+        lines.append("(Quotes, passages, and readings you've collected over time)\n")
+
+        for chunk in chunks:
+            date = self._format_date(chunk.metadata.get("date", "Unknown date"))
+            author = chunk.metadata.get("author", "")
+            book_title = chunk.metadata.get("book_title", "")
+
+            parts = ["Saved"]
+            if author:
+                parts.append(f"from {author}")
+            if book_title:
+                parts.append(f'("{book_title}")')
+            parts.append(f"on {date}")
+
+            lines.append(f"[{' '.join(parts)}]")
+            lines.append(chunk.text.strip())
+            lines.append("")
+
+        return "\n".join(lines)
+
 
 # Global instance
 _retrieval_service: Optional[RetrievalService] = None
@@ -512,7 +580,7 @@ def get_source_stats() -> Dict[str, Any]:
         embedding_service = get_embedding_service(settings.embedding_model)
         dummy_embedding = embedding_service.embed_text("content")
 
-        for source_type in ["dayone", "wordpress", "wisdom"]:
+        for source_type in ["dayone", "wordpress", "wisdom", "commonplace"]:
             try:
                 results = vector_store.search(
                     dummy_embedding,

@@ -21,7 +21,7 @@ backend/
 │   ├── services/
 │   │   ├── embeddings.py    # Text embedding with sentence-transformers
 │   │   ├── llm.py           # Claude API service (sync + streaming)
-│   │   └── retrieval.py     # RAG retrieval with 3-way balanced multi-source search
+│   │   └── retrieval.py     # RAG retrieval with 4-way balanced multi-source search
 │   ├── models/
 │   │   └── schemas.py       # Pydantic request/response schemas
 │   ├── prompts/
@@ -29,7 +29,7 @@ backend/
 │   └── database/
 │       └── vector_store.py  # ChromaDB operations
 ├── data/                     # All gitignored—never commit
-│   ├── raw/                 # User's exports (dayone/, wordpress/, wisdom/)
+│   ├── raw/                 # User's exports (dayone/, wordpress/, wisdom/, commonplace/)
 │   ├── processed/           # Chunked/prepared data
 │   └── chroma/              # Vector database files
 ├── scripts/
@@ -37,6 +37,8 @@ backend/
 │   ├── ingest_dayone.py     # DayOne journal ingestion
 │   ├── ingest_wordpress.py  # WordPress WXR/XML ingestion
 │   ├── ingest_wisdom.py     # Contemplative wisdom text ingestion
+│   ├── ingest_commonplace.py # Commonplace Book (collected quotes) ingestion
+│   ├── process_commonplace_images.py  # Extract quotes from images via Claude Vision
 │   └── download_wisdom_texts.py  # Downloads public domain wisdom texts
 └── tests/
     ├── conftest.py          # Shared pytest fixtures
@@ -47,9 +49,11 @@ backend/
     ├── test_embeddings.py
     ├── test_ingestion_utils.py
     ├── test_llm_service.py  # LLM service + streaming tests
-    ├── test_retrieval_service.py  # Includes wisdom search tests
+    ├── test_retrieval_service.py  # Includes wisdom + commonplace search tests
     ├── test_vector_store.py
     ├── test_wisdom_ingestion.py   # Wisdom pipeline tests
+    ├── test_commonplace_ingestion.py  # Commonplace Book pipeline tests
+    ├── test_image_processor.py    # Image quote extraction tests
     └── test_wordpress_parser.py
 
 frontend/                     # React + TypeScript
@@ -64,19 +68,24 @@ frontend/                     # React + TypeScript
 └── public/
 ```
 
-## Three Source Types
+## Four Source Types
 
-MentorAI retrieves context from three distinct source types, each with different character:
+MentorAI retrieves context from four distinct source types, each with different character:
 
-| Source | Type Key | Ingestion Script | Chunk Sizes |
-|--------|----------|------------------|-------------|
-| DayOne journal | `dayone` | `ingest_dayone.py` | 650/800 tokens (default) |
-| WordPress blog | `wordpress` | `ingest_wordpress.py` | 650/800 tokens (default) |
-| Wisdom texts | `wisdom` | `ingest_wisdom.py` | 800/1000 tokens (larger for coherent teachings) |
+| Source | Type Key | Ingestion Script | Chunk Sizes | Character |
+|--------|----------|------------------|-------------|-----------|
+| DayOne journal | `dayone` | `ingest_dayone.py` | 650/800 tokens (default) | Personal voice |
+| WordPress blog | `wordpress` | `ingest_wordpress.py` | 650/800 tokens (default) | Personal voice |
+| Wisdom texts | `wisdom` | `ingest_wisdom.py` | 800/1000 tokens (larger) | Curated wisdom |
+| Commonplace Book | `commonplace` | `ingest_commonplace.py` | 650/800 tokens (default) | Curated wisdom |
+
+Sources are grouped conceptually:
+- **Personal voice**: `dayone`, `wordpress` — the user's own words
+- **Curated wisdom**: `wisdom`, `commonplace` — wisdom the user has gathered
 
 ### Retrieval Strategy
-- **General queries** (no source keywords): 40% journal, 40% blog, 20% wisdom
-- **Source-prioritized queries** (detected via keywords): 80% primary source (or 60% for wisdom), remainder split across others
+- **General queries** (no source keywords): 35% journal, 35% blog, 15% wisdom, 15% commonplace
+- **Source-prioritized queries** (detected via keywords): 80% primary source (or 60% for wisdom/commonplace), remainder split across others
 - **Explicit filter**: 100% from the specified `source_filter`
 
 ### Wisdom Text Architecture
@@ -125,8 +134,24 @@ MentorAI retrieves context from three distinct source types, each with different
 - No data is stored remotely
 - Don't leak error details that might expose file paths or internal state
 
+### Commonplace Book Architecture
+- Uses the same DayOne JSON export format as the personal journal
+- Stored in `data/raw/commonplace/` (separate export from the user's Commonplace Book journal)
+- These are OTHER people's words that the user has collected — not their own writing
+- Attribution is automatically extracted from patterns like "— Author Name" at end of entries
+- Grouped with wisdom sources for retrieval purposes (curated wisdom the user resonates with)
+- The act of collecting these quotes is itself meaningful data about the user
+
+### Image Quote Extraction
+- Many commonplace entries are screenshots of quotes (from apps like Waking Up, Daily Stoic)
+- `process_commonplace_images.py` extracts text from images using Claude Vision
+- Uses Haiku model by default for cost efficiency (configurable via `IMAGE_EXTRACTION_MODEL`)
+- Results cached to `data/processed/commonplace_images.json` to avoid re-processing
+- `ingest_commonplace.py` automatically includes cached image extractions
+- Image-extracted quotes include `format: "image"` and `original_image` in metadata
+
 ## Current Phase
-Phase 2A complete: Contemplative wisdom text ingestion pipeline added as third source type. 3-way balanced retrieval (40/40/20), wisdom-aware keyword detection, download script for public domain texts, system prompt updated with tradition awareness. 181 backend tests at 94% coverage, 25 frontend tests.
+Phase 2C complete: Image quote extraction for Commonplace Book. Claude Vision extracts quotes from screenshot images (Waking Up, Daily Stoic, etc.). Results cached for review before ingestion. Image-extracted quotes automatically included in commonplace ingestion.
 
 ## Commands
 
@@ -142,6 +167,9 @@ python scripts/ingest_wordpress.py    # Ingest WordPress export
 python scripts/download_wisdom_texts.py        # Download wisdom texts (optional)
 python scripts/download_wisdom_texts.py --force # Re-download all wisdom texts
 python scripts/ingest_wisdom.py       # Ingest wisdom texts
+python scripts/ingest_commonplace.py  # Ingest Commonplace Book
+python scripts/process_commonplace_images.py  # Extract quotes from images (optional)
+python scripts/ingest_commonplace.py --images-only  # Ingest only image-extracted quotes
 ```
 
 ### Frontend
@@ -159,7 +187,7 @@ npm run lint     # TypeScript + ESLint checks
 - `backend/app/config.py` — Single source of truth for all settings
 - `backend/scripts/ingestion_utils.py` — Shared ingestion logic (chunking, embedding, storage)
 - `backend/data/raw/wisdom/sources.json` — Wisdom text metadata manifest
-- `backend/INGESTION_GUIDE.md` — Instructions for all three data sources
+- `backend/INGESTION_GUIDE.md` — Instructions for all four data sources
 - `backend/pytest.ini` — pytest configuration
 
 ## Important Notes
@@ -169,10 +197,10 @@ npm run lint     # TypeScript + ESLint checks
 - CORS origins are configurable via `CORS_ORIGINS` env var (comma-separated)
 - Default chunk sizes (650/800) are configurable via `CHUNK_TARGET_TOKENS` / `CHUNK_MAX_TOKENS` env vars
 - Wisdom texts use hardcoded larger chunks (800/1000) passed directly to `chunk_text()` since coherent teachings benefit from longer context windows
-- The `_prioritized_search()` method is generalized to handle any number of secondary sources—adding a 4th source type only requires adding it to the `all_sources` list
+- The `_prioritized_search()` method is generalized to handle any number of secondary sources—adding a 5th source type only requires adding it to the `all_sources` list
 
 ## Gotchas
-- `_detect_source_priority()` picks the source with the most keyword matches. Ties go to whichever appears first in the dict iteration (blog, journal, wisdom). If a query has equal keyword matches, consider whether the tie-breaking behavior matters.
+- `_detect_source_priority()` picks the source with the most keyword matches. Ties go to whichever appears first in the dict iteration (blog, journal, wisdom, commonplace). If a query has equal keyword matches, consider whether the tie-breaking behavior matters.
 - The download script has per-site extractors (`extract_accesstoinsight`, `extract_sacred_texts`, `extract_terebess`). If a site changes layout, the extractor may need updating. The ingestion script itself is independent of the download script.
 - `sources.json` is gitignored along with everything in `data/`. It's created by the project setup, not committed.
 
@@ -186,4 +214,4 @@ npm run lint     # TypeScript + ESLint checks
 - Don't use `any` type in TypeScript—define proper interfaces
 - Don't leak internal error details (stack traces, file paths) in API responses
 - Don't add dependencies without confirming they're actually used
-- Don't hardcode source type lists—when adding a new source, update all the touchpoints: `SourcePriority` enum, keyword lists, `_balanced_search()`, `_prioritized_search()`, `valid_sources` in `main.py`, and the system prompt
+- Don't hardcode source type lists—when adding a new source, update all the touchpoints: `SourcePriority` enum, keyword lists, `_balanced_search()`, `_prioritized_search()`, `valid_sources` in `main.py`, the system prompt, frontend `Source` type union, `getSourceLabel()`, CSS badge colors, and `SourceChunk` schema

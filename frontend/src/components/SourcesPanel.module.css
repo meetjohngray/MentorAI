@@ -76,6 +76,11 @@
   color: var(--color-wisdom-text);
 }
 
+.sourceType.commonplace {
+  background-color: var(--color-commonplace-bg);
+  color: var(--color-commonplace-text);
+}
+
 .sourceDate {
   color: var(--color-text-muted);
 }

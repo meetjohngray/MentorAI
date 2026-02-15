@@ -43,6 +43,8 @@ function getSourceLabel(sourceType: Source['source_type']): string {
       return 'Blog';
     case 'wisdom':
       return 'Wisdom';
+    case 'commonplace':
+      return 'Commonplace';
     default:
       return 'Source';
   }
@@ -54,6 +56,14 @@ function getWisdomDetail(source: Source): string | null {
   if (source.tradition) parts.push(source.tradition);
   if (source.text_title) parts.push(`"${source.text_title}"`);
   if (source.teacher && source.teacher !== 'Traditional') parts.push(`— ${source.teacher}`);
+  return parts.length > 0 ? parts.join(' ') : null;
+}
+
+function getCommonplaceDetail(source: Source): string | null {
+  if (source.source_type !== 'commonplace') return null;
+  const parts: string[] = [];
+  if (source.author) parts.push(`— ${source.author}`);
+  if (source.book_title) parts.push(`"${source.book_title}"`);
   return parts.length > 0 ? parts.join(' ') : null;
 }
 
@@ -74,6 +84,7 @@ function SourceCard({ source }: { source: Source }) {
 
   const sourceLabel = getSourceLabel(source.source_type);
   const wisdomDetail = getWisdomDetail(source);
+  const commonplaceDetail = getCommonplaceDetail(source);
 
   return (
     <div className={styles.source}>
@@ -89,6 +100,9 @@ function SourceCard({ source }: { source: Source }) {
         )}
         {wisdomDetail && (
           <span className={styles.sourceTitle}>{wisdomDetail}</span>
+        )}
+        {commonplaceDetail && (
+          <span className={styles.sourceTitle}>{commonplaceDetail}</span>
         )}
       </div>
       <p className={styles.sourceText}>{source.text}</p>

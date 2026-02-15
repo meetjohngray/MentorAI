@@ -34,6 +34,9 @@ class SourceChunk(BaseModel):
     tradition: Optional[str] = None
     teacher: Optional[str] = None
     text_title: Optional[str] = None
+    # Commonplace-specific fields
+    author: Optional[str] = None
+    book_title: Optional[str] = None
 
 
 class ChatResponse(BaseModel):

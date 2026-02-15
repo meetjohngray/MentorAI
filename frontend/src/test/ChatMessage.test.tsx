@@ -142,4 +142,47 @@ describe('ChatMessage', () => {
 
     expect(screen.getByText('2 sources referenced')).toBeInTheDocument();
   });
+
+  it('shows commonplace source with author', () => {
+    const message: ChatMessageType = {
+      role: 'assistant',
+      content: 'You once saved a quote that speaks to this...',
+    };
+    const sources: Source[] = [
+      {
+        id: 'cp-1',
+        text: 'The only way out is through.',
+        source_type: 'commonplace',
+        date: '2024-03-10',
+        relevance_score: 0.88,
+        author: 'Robert Frost',
+      },
+    ];
+
+    render(<ChatMessage message={message} sources={sources} />);
+
+    expect(screen.getByText('1 source referenced')).toBeInTheDocument();
+  });
+
+  it('shows commonplace source with author and book title', () => {
+    const message: ChatMessageType = {
+      role: 'assistant',
+      content: 'This reminds me of something you collected...',
+    };
+    const sources: Source[] = [
+      {
+        id: 'cp-2',
+        text: 'We do not see things as they are, we see them as we are.',
+        source_type: 'commonplace',
+        date: '2024-05-20',
+        relevance_score: 0.92,
+        author: 'Anais Nin',
+        book_title: 'Seduction of the Minotaur',
+      },
+    ];
+
+    render(<ChatMessage message={message} sources={sources} />);
+
+    expect(screen.getByText('1 source referenced')).toBeInTheDocument();
+  });
 });

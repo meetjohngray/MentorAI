@@ -148,6 +148,107 @@ Without `sources.json` entries, the script infers metadata from directory and fi
 
 ---
 
+## Commonplace Book
+
+A Commonplace Book is a collection of quotes, passages, and readings you've gathered over time in a separate Day One journal. These are other people's words that resonated enough for you to save.
+
+### Step 1: Export Your Commonplace Book Journal
+
+1. Open Day One
+2. Select your **Commonplace Book journal** (not your personal journal)
+3. File > Export > JSON
+4. Place the export in `backend/data/raw/commonplace/`
+
+### Step 2: Run the Ingestion Script
+
+```bash
+# Option 1: Auto-detect JSON file in data/raw/commonplace/
+python scripts/ingest_commonplace.py
+
+# Option 2: Specify path to JSON file
+python scripts/ingest_commonplace.py /path/to/your/commonplace_export.json
+```
+
+### What Gets Stored
+
+**Metadata**:
+- `source_type`: "commonplace"
+- `entry_id`: Original DayOne UUID
+- `entry_index`: Position in the export
+- `chunk_index` / `total_chunks`: Chunking info
+- `date`: When you saved/collected the entry
+- `tags`: Comma-separated tags from DayOne (you may have tagged by author, topic, etc.)
+- `author`: Detected from attribution patterns (e.g., "— Author Name" at end of entry)
+- `book_title`: Detected from attribution if present (e.g., "Author, \"Book Title\"")
+
+### Attribution Detection
+
+The ingestion script automatically tries to detect attribution at the end of entries. Supported patterns:
+
+- `— Author Name` (em dash)
+- `- Author Name` (hyphen)
+- `~ Author Name` (tilde)
+- `— Author Name, "Book Title"` (with quoted book title)
+- `— Author Name (Book Title)` (with book title in parentheses)
+
+If no attribution pattern is found, the entry is still ingested — it just won't have `author` or `book_title` metadata.
+
+### Image Quote Extraction
+
+Many commonplace book entries are screenshots of quotes (e.g., from apps like Waking Up, Daily Stoic). These images can be processed to extract the text using Claude Vision.
+
+#### Step 1: Place Images in the Photos Directory
+
+DayOne exports include a `photos/` folder with attached images. Make sure your export is in:
+```
+backend/data/raw/commonplace/
+├── Journal.json       # The DayOne JSON export
+└── photos/            # Folder with image attachments
+    ├── image1.jpg
+    ├── image2.png
+    └── ...
+```
+
+#### Step 2: Process Images with Claude Vision
+
+```bash
+# Process all images (results are cached to avoid re-processing)
+python scripts/process_commonplace_images.py
+
+# Force re-process all images
+python scripts/process_commonplace_images.py --force
+
+# View summary of cached extractions
+python scripts/process_commonplace_images.py --summary-only
+```
+
+This script:
+- Uses Claude Vision (Haiku by default) to extract quotes from images
+- Detects author and source/app name when visible
+- Saves results to `data/processed/commonplace_images.json` for review
+- Respects rate limits with configurable delay between API calls
+
+#### Step 3: Ingest Text and Images Together
+
+The regular ingestion script automatically includes image-extracted quotes:
+
+```bash
+# Ingest both JSON entries AND image quotes
+python scripts/ingest_commonplace.py
+
+# Ingest ONLY from image cache (no JSON required)
+python scripts/ingest_commonplace.py --images-only
+```
+
+#### Image-Specific Metadata
+
+Image-extracted quotes include additional metadata:
+- `format`: "image" (to distinguish from text entries)
+- `original_image`: The source filename
+- `image_source`: App/source name if detected (e.g., "Waking Up")
+
+---
+
 ## Testing Search
 
 Start the FastAPI server:
@@ -166,6 +267,7 @@ curl "http://localhost:8000/search?q=meditation&limit=5"
 curl "http://localhost:8000/search?q=mindfulness&source=wisdom"
 curl "http://localhost:8000/search?q=gratitude&source=dayone"
 curl "http://localhost:8000/search?q=stillness&source=wordpress"
+curl "http://localhost:8000/search?q=perseverance&source=commonplace"
 ```
 
 Or visit the interactive API docs at http://localhost:8000/docs
