@@ -150,6 +150,12 @@ Sources are grouped conceptually:
 - `ingest_commonplace.py` automatically includes cached image extractions
 - Image-extracted quotes include `format: "image"` and `original_image` in metadata
 
+### Author Search in Commonplace
+- Commonplace entries with detected authors prepend `[Quote by Author]` to the embedded text
+- This enables semantic search by author name (e.g., "quotes from David Whyte")
+- Without the prefix, embedding-based search only matches quote content, not metadata
+- The `_build_searchable_text()` function in `ingest_commonplace.py` handles this
+
 ## Current Phase
 Phase 2C complete: Image quote extraction for Commonplace Book. Claude Vision extracts quotes from screenshot images (Waking Up, Daily Stoic, etc.). Results cached for review before ingestion. Image-extracted quotes automatically included in commonplace ingestion.
 
@@ -160,7 +166,7 @@ Phase 2C complete: Image quote extraction for Commonplace Book. Claude Vision ex
 cd backend
 source venv/bin/activate
 uvicorn app.main:app --reload        # Run dev server (http://localhost:8000)
-pytest -v                             # Run tests (181 tests)
+pytest -v                             # Run tests (246 tests)
 pytest --cov=app --cov-report=html    # Run tests with coverage
 python scripts/ingest_dayone.py       # Ingest DayOne journal data
 python scripts/ingest_wordpress.py    # Ingest WordPress export
