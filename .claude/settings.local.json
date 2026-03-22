@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(source venv/bin/activate)",
+      "Bash(pytest:*)",
+      "Bash(npm run build:*)",
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nAdd WordPress ingestion pipeline with source filtering\n\n- Create ingest_wordpress.py to parse WXR/XML exports\n- Use lxml with recovery mode to handle malformed XML\n- Strip HTML content while preserving paragraph structure\n- Add source filter parameter to /search endpoint\n- Update frontend types and API service for WordPress metadata\n- Add 35 tests for WordPress parser \\(91 total tests passing\\)\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(python scripts/ingest_dayone.py:*)",
+      "Bash(python:*)",
+      "Bash(curl:*)",
+      "Bash(pkill:*)",
+      "Bash(npm install:*)",
+      "Bash(git push:*)",
+      "Bash(git checkout:*)",
+      "Bash(npm run lint)"
+    ]
+  }
+}

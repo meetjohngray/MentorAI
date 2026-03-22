@@ -1,9 +1,14 @@
 .page {
   display: flex;
-  flex-direction: column;
   height: 100vh;
+}
+
+.chatArea {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
   max-width: 800px;
-  margin: 0 auto;
 }
 
 .header {
@@ -25,4 +30,10 @@
 .main {
   flex: 1;
   overflow: hidden;
+}
+
+@media (max-width: 768px) {
+  .chatArea {
+    max-width: 100%;
+  }
 }

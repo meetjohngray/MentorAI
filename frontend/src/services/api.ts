@@ -2,6 +2,8 @@ import axios from 'axios';
 import type {
   ChatMessage,
   ChatResponse,
+  ConversationDetail,
+  ConversationSummary,
   HealthResponse,
   SearchResponse,
 } from '../types';
@@ -53,16 +55,43 @@ export const search = async ({
 
 export interface ChatParams {
   message: string;
+  conversationId?: string;
   conversationHistory?: ChatMessage[];
 }
 
 export const sendChatMessage = async ({
   message,
+  conversationId,
   conversationHistory = [],
 }: ChatParams): Promise<ChatResponse> => {
   const response = await api.post<ChatResponse>('/chat', {
     message,
+    conversation_id: conversationId,
     conversation_history: conversationHistory,
   });
   return response.data;
+};
+
+// ============================================================================
+// Conversations
+// ============================================================================
+
+export const getConversations = async (limit = 50): Promise<ConversationSummary[]> => {
+  const response = await api.get<ConversationSummary[]>('/conversations', {
+    params: { limit },
+  });
+  return response.data;
+};
+
+export const getConversation = async (id: string): Promise<ConversationDetail> => {
+  const response = await api.get<ConversationDetail>(`/conversations/${id}`);
+  return response.data;
+};
+
+export const deleteConversation = async (id: string): Promise<void> => {
+  await api.delete(`/conversations/${id}`);
+};
+
+export const updateConversationTitle = async (id: string, title: string): Promise<void> => {
+  await api.patch(`/conversations/${id}`, { title });
 };

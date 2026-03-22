@@ -22,6 +22,7 @@ from app.services.retrieval import (
 from app.services.llm import LLMService, LLMError, get_llm_service, reset_llm_service
 from app.prompts.system_prompt import get_system_prompt, MENTOR_SYSTEM_PROMPT
 from app.database.vector_store import initialize_db
+from app.database.conversation_store import ConversationStore, reset_conversation_store
 from app.services.embeddings import get_embedding_service
 
 
@@ -107,9 +108,20 @@ def reset_services():
     """Reset singleton services before each test."""
     reset_llm_service()
     reset_retrieval_service()
+    reset_conversation_store()
     yield
     reset_llm_service()
     reset_retrieval_service()
+    reset_conversation_store()
+
+
+@pytest.fixture
+def mock_conversation_store(temp_dir):
+    """Create a mock conversation store for chat tests."""
+    db_path = str(temp_dir / "test_chat.db")
+    store = ConversationStore(db_path)
+    store.init_db()
+    return store
 
 
 # ============================================================================
@@ -149,6 +161,19 @@ class TestChatSchemas:
         assert request.message == "First message"
         assert request.conversation_history == []
 
+    def test_chat_request_with_conversation_id(self):
+        """Test ChatRequest with optional conversation_id."""
+        request = ChatRequest(
+            message="Follow up",
+            conversation_id="test-conv-id"
+        )
+        assert request.conversation_id == "test-conv-id"
+
+    def test_chat_request_without_conversation_id(self):
+        """Test ChatRequest defaults conversation_id to None."""
+        request = ChatRequest(message="First message")
+        assert request.conversation_id is None
+
     def test_chat_response_valid(self):
         """Test valid ChatResponse creation."""
         response = ChatResponse(
@@ -161,10 +186,12 @@ class TestChatSchemas:
                     date="2024-01-15",
                     relevance_score=0.8
                 )
-            ]
+            ],
+            conversation_id="test-conv-id"
         )
         assert response.response == "Here's what I observe..."
         assert len(response.sources) == 1
+        assert response.conversation_id == "test-conv-id"
 
 
 # ============================================================================
@@ -344,9 +371,10 @@ class TestChatEndpoint:
     """Test the /chat endpoint."""
 
     @pytest.mark.asyncio
-    async def test_chat_endpoint_structure(self, client, setup_test_vector_store):
+    async def test_chat_endpoint_structure(self, client, setup_test_vector_store, mock_conversation_store):
         """Test chat endpoint returns correct structure (mocked LLM)."""
-        with patch('app.routers.chat.get_llm_service') as mock_get_llm:
+        with patch('app.routers.chat.get_llm_service') as mock_get_llm, \
+             patch('app.routers.chat.get_conversation_store', return_value=mock_conversation_store):
             mock_service = MagicMock()
             mock_service.generate_response.return_value = "This is a test response."
             mock_get_llm.return_value = mock_service
@@ -361,12 +389,14 @@ class TestChatEndpoint:
 
             assert "response" in data
             assert "sources" in data
+            assert "conversation_id" in data
             assert isinstance(data["sources"], list)
 
     @pytest.mark.asyncio
-    async def test_chat_endpoint_with_history(self, client, setup_test_vector_store):
+    async def test_chat_endpoint_with_history(self, client, setup_test_vector_store, mock_conversation_store):
         """Test chat endpoint with conversation history."""
-        with patch('app.routers.chat.get_llm_service') as mock_get_llm:
+        with patch('app.routers.chat.get_llm_service') as mock_get_llm, \
+             patch('app.routers.chat.get_conversation_store', return_value=mock_conversation_store):
             mock_service = MagicMock()
             mock_service.generate_response.return_value = "Following up on our conversation..."
             mock_get_llm.return_value = mock_service
@@ -399,9 +429,10 @@ class TestChatEndpoint:
         assert response.status_code == 422  # Validation error
 
     @pytest.mark.asyncio
-    async def test_chat_endpoint_includes_sources(self, client, setup_test_vector_store):
+    async def test_chat_endpoint_includes_sources(self, client, setup_test_vector_store, mock_conversation_store):
         """Test that chat endpoint includes relevant sources."""
-        with patch('app.routers.chat.get_llm_service') as mock_get_llm:
+        with patch('app.routers.chat.get_llm_service') as mock_get_llm, \
+             patch('app.routers.chat.get_conversation_store', return_value=mock_conversation_store):
             mock_service = MagicMock()
             mock_service.generate_response.return_value = "Based on your journal..."
             mock_get_llm.return_value = mock_service
@@ -425,9 +456,61 @@ class TestChatEndpoint:
                 assert "relevance_score" in source
 
     @pytest.mark.asyncio
-    async def test_chat_endpoint_llm_error_handling(self, client, setup_test_vector_store):
+    async def test_chat_endpoint_persists_messages(self, client, setup_test_vector_store, mock_conversation_store):
+        """Test that chat endpoint persists messages to conversation store."""
+        with patch('app.routers.chat.get_llm_service') as mock_get_llm, \
+             patch('app.routers.chat.get_conversation_store', return_value=mock_conversation_store):
+            mock_service = MagicMock()
+            mock_service.generate_response.return_value = "A thoughtful response."
+            mock_get_llm.return_value = mock_service
+
+            response = await client.post(
+                "/chat",
+                json={"message": "Tell me about patterns"}
+            )
+
+            assert response.status_code == 200
+            data = response.json()
+            conversation_id = data["conversation_id"]
+
+            # Verify messages were persisted
+            conv = mock_conversation_store.get_conversation(conversation_id)
+            assert conv is not None
+            assert len(conv["messages"]) == 2  # user + assistant
+            assert conv["messages"][0]["role"] == "user"
+            assert conv["messages"][1]["role"] == "assistant"
+
+    @pytest.mark.asyncio
+    async def test_chat_endpoint_continues_conversation(self, client, setup_test_vector_store, mock_conversation_store):
+        """Test that chat endpoint continues an existing conversation."""
+        # Create a conversation first
+        cid = mock_conversation_store.create_conversation("First message")
+        mock_conversation_store.add_message(cid, "user", "First message")
+        mock_conversation_store.add_message(cid, "assistant", "First response")
+
+        with patch('app.routers.chat.get_llm_service') as mock_get_llm, \
+             patch('app.routers.chat.get_conversation_store', return_value=mock_conversation_store):
+            mock_service = MagicMock()
+            mock_service.generate_response.return_value = "Continuing the thread."
+            mock_get_llm.return_value = mock_service
+
+            response = await client.post(
+                "/chat",
+                json={"message": "Follow up", "conversation_id": cid}
+            )
+
+            assert response.status_code == 200
+            assert response.json()["conversation_id"] == cid
+
+            # Should now have 4 messages total
+            conv = mock_conversation_store.get_conversation(cid)
+            assert len(conv["messages"]) == 4
+
+    @pytest.mark.asyncio
+    async def test_chat_endpoint_llm_error_handling(self, client, setup_test_vector_store, mock_conversation_store):
         """Test that LLM errors are handled gracefully."""
-        with patch('app.routers.chat.get_llm_service') as mock_get_llm:
+        with patch('app.routers.chat.get_llm_service') as mock_get_llm, \
+             patch('app.routers.chat.get_conversation_store', return_value=mock_conversation_store):
             mock_service = MagicMock()
             mock_service.generate_response.side_effect = LLMError("API error")
             mock_get_llm.return_value = mock_service

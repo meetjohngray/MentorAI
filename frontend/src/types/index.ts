@@ -31,6 +31,36 @@ export interface Source {
 export interface ChatResponse {
   response: string;
   sources: Source[];
+  conversation_id: string;
+}
+
+// ============================================================================
+// Conversation Types
+// ============================================================================
+
+export interface ConversationSummary {
+  id: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+  message_count: number;
+  preview?: string;
+}
+
+export interface ChatMessageWithSources {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  sources?: Source[];
+  created_at: string;
+}
+
+export interface ConversationDetail {
+  id: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+  messages: ChatMessageWithSources[];
 }
 
 // ============================================================================

@@ -2,6 +2,7 @@
 Pydantic models for MentorAI API request/response schemas.
 """
 
+from datetime import datetime
 from typing import List, Dict, Any, Literal, Optional
 from pydantic import BaseModel, Field
 
@@ -15,6 +16,10 @@ class ChatMessage(BaseModel):
 class ChatRequest(BaseModel):
     """Request body for the chat endpoint."""
     message: str = Field(..., min_length=1, description="The user's message")
+    conversation_id: Optional[str] = Field(
+        default=None,
+        description="Conversation ID to continue. None creates a new conversation."
+    )
     conversation_history: List[ChatMessage] = Field(
         default_factory=list,
         max_length=100,
@@ -46,6 +51,7 @@ class ChatResponse(BaseModel):
         default_factory=list,
         description="Retrieved chunks used for context"
     )
+    conversation_id: str = Field(..., description="The conversation ID")
 
 
 class HealthResponse(BaseModel):
@@ -70,3 +76,41 @@ class SearchResponse(BaseModel):
     query: str
     num_results: int
     results: List[SearchResult]
+
+
+# ============================================================================
+# Conversation Types
+# ============================================================================
+
+
+class ChatMessageWithSources(BaseModel):
+    """A message that may include sources (for assistant messages)."""
+    id: str
+    role: Literal["user", "assistant"]
+    content: str
+    sources: Optional[List[SourceChunk]] = None
+    created_at: datetime
+
+
+class ConversationSummary(BaseModel):
+    """Summary of a conversation for list view."""
+    id: str
+    title: str
+    created_at: datetime
+    updated_at: datetime
+    message_count: int
+    preview: Optional[str] = None
+
+
+class ConversationDetail(BaseModel):
+    """Full conversation with messages."""
+    id: str
+    title: str
+    created_at: datetime
+    updated_at: datetime
+    messages: List[ChatMessageWithSources]
+
+
+class ConversationTitleUpdate(BaseModel):
+    """Request body for updating a conversation title."""
+    title: str = Field(..., min_length=1, max_length=200)

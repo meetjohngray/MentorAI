@@ -5,6 +5,8 @@ This is the entry point for the backend server.
 Run with: uvicorn app.main:app --reload
 """
 
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, Query, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import logging
@@ -13,17 +15,28 @@ from app.config import settings
 from app.services.embeddings import get_embedding_service
 from app.database.vector_store import initialize_db, get_vector_store
 from app.services.retrieval import get_retrieval_service
+from app.database.conversation_store import get_conversation_store
 from app.routers.chat import router as chat_router
+from app.routers.conversations import router as conversations_router
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Initialize services on startup."""
+    store = get_conversation_store()
+    store.init_db()
+    yield
+
+
 # Create the FastAPI application
 app = FastAPI(
     title="MentorAI",
     description="A personal AI companion grounded in your journals and wisdom traditions",
-    version="0.1.0"
+    version="0.1.0",
+    lifespan=lifespan,
 )
 
 # Allow requests from the React frontend (configurable via CORS_ORIGINS env var)
@@ -37,6 +50,7 @@ app.add_middleware(
 
 # Include routers
 app.include_router(chat_router)
+app.include_router(conversations_router)
 
 
 @app.get("/")

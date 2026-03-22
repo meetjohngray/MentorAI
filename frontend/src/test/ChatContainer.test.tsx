@@ -7,7 +7,13 @@ import * as api from '../services/api';
 // Mock the API module
 vi.mock('../services/api', () => ({
   sendChatMessage: vi.fn(),
+  getConversation: vi.fn(),
 }));
+
+const defaultProps = {
+  conversationId: null,
+  onConversationChange: vi.fn(),
+};
 
 describe('ChatContainer', () => {
   beforeEach(() => {
@@ -15,7 +21,7 @@ describe('ChatContainer', () => {
   });
 
   it('renders welcome message initially', () => {
-    render(<ChatContainer />);
+    render(<ChatContainer {...defaultProps} />);
 
     expect(screen.getByText('Welcome')).toBeInTheDocument();
     expect(
@@ -28,9 +34,10 @@ describe('ChatContainer', () => {
     vi.mocked(api.sendChatMessage).mockResolvedValue({
       response: 'Test response',
       sources: [],
+      conversation_id: 'conv-1',
     });
 
-    render(<ChatContainer />);
+    render(<ChatContainer {...defaultProps} />);
 
     const input = screen.getByRole('textbox');
     await user.type(input, 'Hello mentor{enter}');
@@ -44,9 +51,10 @@ describe('ChatContainer', () => {
     vi.mocked(api.sendChatMessage).mockResolvedValue({
       response: 'I notice you mentioned patterns...',
       sources: [],
+      conversation_id: 'conv-1',
     });
 
-    render(<ChatContainer />);
+    render(<ChatContainer {...defaultProps} />);
 
     const input = screen.getByRole('textbox');
     await user.type(input, 'What patterns do you see?{enter}');
@@ -66,10 +74,14 @@ describe('ChatContainer', () => {
       resolvePromise = resolve;
     });
     vi.mocked(api.sendChatMessage).mockReturnValue(
-      pendingPromise as Promise<{ response: string; sources: [] }>
+      pendingPromise as Promise<{
+        response: string;
+        sources: [];
+        conversation_id: string;
+      }>
     );
 
-    render(<ChatContainer />);
+    render(<ChatContainer {...defaultProps} />);
 
     const input = screen.getByRole('textbox');
     await user.type(input, 'Test message{enter}');
@@ -78,7 +90,11 @@ describe('ChatContainer', () => {
     expect(screen.getByText('Reflecting...')).toBeInTheDocument();
 
     // Resolve the promise
-    resolvePromise!({ response: 'Done', sources: [] });
+    resolvePromise!({
+      response: 'Done',
+      sources: [],
+      conversation_id: 'conv-1',
+    });
 
     await waitFor(() => {
       expect(screen.queryByText('Reflecting...')).not.toBeInTheDocument();
@@ -92,17 +108,25 @@ describe('ChatContainer', () => {
       resolvePromise = resolve;
     });
     vi.mocked(api.sendChatMessage).mockReturnValue(
-      pendingPromise as Promise<{ response: string; sources: [] }>
+      pendingPromise as Promise<{
+        response: string;
+        sources: [];
+        conversation_id: string;
+      }>
     );
 
-    render(<ChatContainer />);
+    render(<ChatContainer {...defaultProps} />);
 
     const input = screen.getByRole('textbox');
     await user.type(input, 'Test{enter}');
 
     expect(input).toBeDisabled();
 
-    resolvePromise!({ response: 'Done', sources: [] });
+    resolvePromise!({
+      response: 'Done',
+      sources: [],
+      conversation_id: 'conv-1',
+    });
 
     await waitFor(() => {
       expect(input).not.toBeDisabled();
@@ -115,7 +139,7 @@ describe('ChatContainer', () => {
       new Error('Network error')
     );
 
-    render(<ChatContainer />);
+    render(<ChatContainer {...defaultProps} />);
 
     const input = screen.getByRole('textbox');
     await user.type(input, 'Test message{enter}');
@@ -131,7 +155,7 @@ describe('ChatContainer', () => {
       new Error('Network error')
     );
 
-    render(<ChatContainer />);
+    render(<ChatContainer {...defaultProps} />);
 
     const input = screen.getByRole('textbox');
     await user.type(input, 'My message{enter}');
@@ -144,13 +168,21 @@ describe('ChatContainer', () => {
     expect(screen.queryByText('My message')).not.toBeInTheDocument();
   });
 
-  it('passes conversation history to API', async () => {
+  it('passes conversation history and conversationId to API', async () => {
     const user = userEvent.setup();
     vi.mocked(api.sendChatMessage)
-      .mockResolvedValueOnce({ response: 'First response', sources: [] })
-      .mockResolvedValueOnce({ response: 'Second response', sources: [] });
+      .mockResolvedValueOnce({
+        response: 'First response',
+        sources: [],
+        conversation_id: 'conv-1',
+      })
+      .mockResolvedValueOnce({
+        response: 'Second response',
+        sources: [],
+        conversation_id: 'conv-1',
+      });
 
-    render(<ChatContainer />);
+    render(<ChatContainer {...defaultProps} />);
 
     const input = screen.getByRole('textbox');
 
@@ -166,9 +198,10 @@ describe('ChatContainer', () => {
       expect(screen.getByText('Second response')).toBeInTheDocument();
     });
 
-    // Check that history was passed to second call
+    // Check that history and conversationId were passed to second call
     expect(api.sendChatMessage).toHaveBeenLastCalledWith({
       message: 'Follow up',
+      conversationId: 'conv-1',
       conversationHistory: [
         { role: 'user', content: 'First question' },
         { role: 'assistant', content: 'First response' },
@@ -181,9 +214,10 @@ describe('ChatContainer', () => {
     vi.mocked(api.sendChatMessage).mockResolvedValue({
       response: 'Response',
       sources: [],
+      conversation_id: 'conv-1',
     });
 
-    render(<ChatContainer />);
+    render(<ChatContainer {...defaultProps} />);
 
     expect(screen.getByText('Welcome')).toBeInTheDocument();
 
@@ -191,5 +225,67 @@ describe('ChatContainer', () => {
     await user.type(input, 'Hello{enter}');
 
     expect(screen.queryByText('Welcome')).not.toBeInTheDocument();
+  });
+
+  it('calls onConversationChange when new conversation is created', async () => {
+    const user = userEvent.setup();
+    const onConversationChange = vi.fn();
+    vi.mocked(api.sendChatMessage).mockResolvedValue({
+      response: 'Response',
+      sources: [],
+      conversation_id: 'new-conv-id',
+    });
+
+    render(
+      <ChatContainer
+        conversationId={null}
+        onConversationChange={onConversationChange}
+      />
+    );
+
+    const input = screen.getByRole('textbox');
+    await user.type(input, 'Hello{enter}');
+
+    await waitFor(() => {
+      expect(onConversationChange).toHaveBeenCalledWith('new-conv-id');
+    });
+  });
+
+  it('loads conversation when conversationId prop changes', async () => {
+    vi.mocked(api.getConversation).mockResolvedValue({
+      id: 'conv-1',
+      title: 'Test conversation',
+      created_at: '2024-01-15T10:00:00Z',
+      updated_at: '2024-01-15T10:00:00Z',
+      messages: [
+        {
+          id: 'msg-1',
+          role: 'user',
+          content: 'Loaded message',
+          created_at: '2024-01-15T10:00:00Z',
+        },
+        {
+          id: 'msg-2',
+          role: 'assistant',
+          content: 'Loaded response',
+          created_at: '2024-01-15T10:01:00Z',
+        },
+      ],
+    });
+
+    const { rerender } = render(<ChatContainer {...defaultProps} />);
+
+    // Switch to an existing conversation
+    rerender(
+      <ChatContainer
+        conversationId="conv-1"
+        onConversationChange={defaultProps.onConversationChange}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Loaded message')).toBeInTheDocument();
+      expect(screen.getByText('Loaded response')).toBeInTheDocument();
+    });
   });
 });
