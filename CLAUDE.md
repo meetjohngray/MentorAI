@@ -17,7 +17,8 @@ backend/
 │   ├── main.py              # Entry point, /health, /search endpoints
 │   ├── config.py            # All settings from .env (single source of truth)
 │   ├── routers/
-│   │   └── chat.py          # POST /chat endpoint with RAG integration
+│   │   ├── chat.py              # POST /chat endpoint with RAG + persistence
+│   │   └── conversations.py     # Conversation CRUD endpoints
 │   ├── services/
 │   │   ├── embeddings.py    # Text embedding with sentence-transformers
 │   │   ├── llm.py           # Claude API service (sync + streaming)
@@ -27,7 +28,8 @@ backend/
 │   ├── prompts/
 │   │   └── system_prompt.py # Mentor persona system prompt
 │   └── database/
-│       └── vector_store.py  # ChromaDB operations
+│       ├── vector_store.py      # ChromaDB operations
+│       └── conversation_store.py # SQLite conversation storage (singleton pattern)
 ├── data/                     # All gitignored—never commit
 │   ├── raw/                 # User's exports (dayone/, wordpress/, wisdom/, commonplace/)
 │   ├── processed/           # Chunked/prepared data
@@ -54,11 +56,13 @@ backend/
     ├── test_wisdom_ingestion.py   # Wisdom pipeline tests
     ├── test_commonplace_ingestion.py  # Commonplace Book pipeline tests
     ├── test_image_processor.py    # Image quote extraction tests
-    └── test_wordpress_parser.py
+    ├── test_wordpress_parser.py
+    ├── test_conversation_store.py   # SQLite persistence tests
+    └── test_conversations_api.py    # Conversation endpoint tests
 
 frontend/                     # React + TypeScript
 ├── src/
-│   ├── components/          # ChatContainer, ChatInput, ChatMessage
+│   ├── components/          # ChatContainer, ChatInput, ChatMessage, ConversationSidebar, SourcesPanel
 │   ├── pages/               # ChatPage
 │   ├── services/api.ts      # Typed API client
 │   ├── types/index.ts       # TypeScript interfaces
@@ -156,8 +160,16 @@ Sources are grouped conceptually:
 - Without the prefix, embedding-based search only matches quote content, not metadata
 - The `_build_searchable_text()` function in `ingest_commonplace.py` handles this
 
+### Conversation Persistence
+- Conversations stored in SQLite at `data/conversations.db`
+- `ConversationStore` follows singleton pattern (`get_conversation_store()`, `reset_conversation_store()`)
+- Auto-generated titles from first 50 chars of first message
+- Messages store optional `sources` as JSON for assistant responses
+- `/chat` endpoint accepts optional `conversation_id` and always returns one
+- `/conversations` endpoints: list, create, get, delete, update title
+
 ## Current Phase
-Phase 2C complete: Image quote extraction for Commonplace Book. Claude Vision extracts quotes from screenshot images (Waking Up, Daily Stoic, etc.). Results cached for review before ingestion. Image-extracted quotes automatically included in commonplace ingestion.
+Phase 3 complete: Conversation persistence with SQLite. Conversations are stored in `data/conversations.db`, survive browser refresh, and are accessible via sidebar. The `/chat` endpoint now accepts optional `conversation_id` and returns it in responses.
 
 ## Commands
 
@@ -166,7 +178,7 @@ Phase 2C complete: Image quote extraction for Commonplace Book. Claude Vision ex
 cd backend
 source venv/bin/activate
 uvicorn app.main:app --reload        # Run dev server (http://localhost:8000)
-pytest -v                             # Run tests (246 tests)
+pytest -v                             # Run tests (290 tests)
 pytest --cov=app --cov-report=html    # Run tests with coverage
 python scripts/ingest_dayone.py       # Ingest DayOne journal data
 python scripts/ingest_wordpress.py    # Ingest WordPress export
@@ -176,6 +188,10 @@ python scripts/ingest_wisdom.py       # Ingest wisdom texts
 python scripts/ingest_commonplace.py  # Ingest Commonplace Book
 python scripts/process_commonplace_images.py  # Extract quotes from images (optional)
 python scripts/ingest_commonplace.py --images-only  # Ingest only image-extracted quotes
+
+# Database
+sqlite3 data/conversations.db ".tables"  # Inspect conversation database
+sqlite3 data/conversations.db "SELECT id, title FROM conversations"  # List conversations
 ```
 
 ### Frontend
@@ -204,6 +220,8 @@ npm run lint     # TypeScript + ESLint checks
 - Default chunk sizes (650/800) are configurable via `CHUNK_TARGET_TOKENS` / `CHUNK_MAX_TOKENS` env vars
 - Wisdom texts use hardcoded larger chunks (800/1000) passed directly to `chunk_text()` since coherent teachings benefit from longer context windows
 - The `_prioritized_search()` method is generalized to handle any number of secondary sources—adding a 5th source type only requires adding it to the `all_sources` list
+- Conversations persist to `backend/data/conversations.db`—delete this file to clear history
+- Conversation titles auto-generate from first message (editable via PATCH)
 
 ## Gotchas
 - `_detect_source_priority()` picks the source with the most keyword matches. Ties go to whichever appears first in the dict iteration (blog, journal, wisdom, commonplace). If a query has equal keyword matches, consider whether the tie-breaking behavior matters.
